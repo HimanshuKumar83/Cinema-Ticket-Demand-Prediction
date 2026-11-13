@@ -65,24 +65,25 @@ Executes 6 independent tests verifying future-independence, split integrity, bou
 pytest -v
 ```
 
-### 7. Run FastAPI Microservice
+### 7. Run Modern React Frontend (Vite)
+Starts the modern React dashboard on port 5173 with hot-module reload:
+```powershell
+npm --prefix frontend run dev
+```
+- Interactive React App: [http://localhost:5173](http://localhost:5173)
+- Run React Unit Tests: `npm --prefix frontend run test`
+
+### 8. Run FastAPI Microservice (Serves API & Built React UI)
 Starts the real-time inference server on port 8000 (loads saved `artifacts/model.joblib` and `artifacts/history.parquet`):
 ```powershell
 uvicorn app.api:app --reload --port 8000
 ```
-- Interactive Swagger Docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- Built React Web UI: [http://localhost:8000](http://localhost:8000)
+- Interactive Swagger Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 - Health Check: `curl http://127.0.0.1:8000/health`
-- Model Info: `curl http://127.0.0.1:8000/model-info`
 
-Sample prediction request:
-```powershell
-curl -X POST "http://127.0.0.1:8000/predict" `
-     -H "Content-Type: application/json" `
-     -d '{"cinema_code": 448, "film_code": 1576, "date": "2018-10-15", "show_time": 3, "capacity": 300.0}'
-```
-
-### 8. Run Streamlit Decision Dashboard
-Launches the interactive operations dashboard:
+### 9. Run Streamlit Decision Dashboard
+Alternative Python-native dashboard:
 ```powershell
 streamlit run app/dashboard.py
 ```

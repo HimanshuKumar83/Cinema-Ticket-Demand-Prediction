@@ -21,26 +21,32 @@ if (-not (Test-Path artifacts\model.joblib) -or -not (Test-Path artifacts\histor
 
 # 3. Launch Option
 Write-Host "`nChoose an interface to run:" -ForegroundColor Yellow
-Write-Host "  1) Launch Interactive Streamlit Dashboard (Port 8501) [Recommended]"
-Write-Host "  2) Launch FastAPI REST Service (Port 8000)"
-Write-Host "  3) Launch Both (API in background, Dashboard in browser)"
-Write-Host "  4) Run Pytest Suite"
-$choice = Read-Host "`nEnter option [1-4] (Default: 1)"
+Write-Host "  1) Launch Modern React Dashboard (Port 5173) [Recommended]"
+Write-Host "  2) Launch Streamlit Dashboard (Port 8501)"
+Write-Host "  3) Launch FastAPI Service (Port 8000, serves React at /)"
+Write-Host "  4) Launch Full Stack (FastAPI + React Dev Server)"
+Write-Host "  5) Run Complete Test Suites (Pytest Backend + Vitest React)"
+$choice = Read-Host "`nEnter option [1-5] (Default: 1)"
 
 if ($choice -eq "2") {
-    Write-Host "`nStarting FastAPI at http://localhost:8000 (Docs: http://localhost:8000/docs)..." -ForegroundColor Green
-    uvicorn app.api:app --reload --port 8000
+    Write-Host "`nStarting Streamlit Dashboard at http://localhost:8501..." -ForegroundColor Green
+    streamlit run app/dashboard.py
 } elseif ($choice -eq "3") {
+    Write-Host "`nStarting FastAPI at http://localhost:8000 (React UI at /, Docs at /docs)..." -ForegroundColor Green
+    uvicorn app.api:app --reload --port 8000
+} elseif ($choice -eq "4") {
     Write-Host "`nStarting FastAPI in background..." -ForegroundColor Green
     Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PWD'; .\.venv\Scripts\Activate.ps1; uvicorn app.api:app --port 8000"
     Start-Sleep -Seconds 2
-    Write-Host "Starting Streamlit Dashboard..." -ForegroundColor Green
-    streamlit run app/dashboard.py
-} elseif ($choice -eq "4") {
-    Write-Host "`nRunning Pytest Suite..." -ForegroundColor Green
+    Write-Host "Starting React Vite Dev Server..." -ForegroundColor Green
+    npm --prefix frontend run dev
+} elseif ($choice -eq "5") {
+    Write-Host "`nRunning Python Backend Tests..." -ForegroundColor Green
     pytest -v
+    Write-Host "`nRunning React Frontend Tests..." -ForegroundColor Green
+    npm --prefix frontend run test
 } else {
-    Write-Host "`nStarting Streamlit Dashboard at http://localhost:8501..." -ForegroundColor Green
-    streamlit run app/dashboard.py
+    Write-Host "`nStarting React Vite Dev Server at http://localhost:5173..." -ForegroundColor Green
+    npm --prefix frontend run dev
 }
 

@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 # Ensure project root is in sys.path
@@ -42,6 +44,15 @@ app = FastAPI(
     description="Show-level T-48h demand forecasting MVP for cinema operations managers.",
     version="1.0.0",
     lifespan=lifespan
+)
+
+# Enable CORS for React and local development frontends
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -153,3 +164,10 @@ def predict(req: PredictRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Prediction error: {str(e)}")
+
+
+# Mount built React single-page frontend if dist exists
+frontend_dist_dir = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+if frontend_dist_dir.exists():
+    app.mount("/", StaticFiles(directory=str(frontend_dist_dir), html=True), name="frontend")
+

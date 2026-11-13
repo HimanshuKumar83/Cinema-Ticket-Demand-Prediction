@@ -24,6 +24,12 @@ __pycache__/
 artifacts/*.csv
 artifacts/*.raw
 
+# Node & Frontend
+frontend/node_modules/
+node_modules/
+frontend/dist/
+.npm/
+
 # OS and IDE files
 .DS_Store
 Thumbs.db
