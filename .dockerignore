@@ -1,0 +1,12 @@
+.venv/
+venv/
+data/raw/
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+.pytest_cache/
+.ipynb_checkpoints/
+*.egg-info/
+.DS_Store
