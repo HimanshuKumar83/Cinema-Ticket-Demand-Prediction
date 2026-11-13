@@ -3,7 +3,8 @@ Write-Host "==========================================================" -Foregro
 Write-Host "   🎬 CinemaOps AI: Demand Forecasting Launch Script     " -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
-# 1. Activate Virtual Environment
+# 1. Activate Virtual Environment & set PYTHONPATH
+$env:PYTHONPATH = "$PWD"
 if (Test-Path .venv\Scripts\Activate.ps1) {
     Write-Host "[1/2] Activating virtual environment (.venv)..." -ForegroundColor Green
     & .\.venv\Scripts\Activate.ps1
@@ -42,3 +43,4 @@ if ($choice -eq "2") {
     Write-Host "`nStarting Streamlit Dashboard at http://localhost:8501..." -ForegroundColor Green
     streamlit run app/dashboard.py
 }
+

@@ -1,11 +1,17 @@
 """FastAPI inference service for Cinema Ticket Demand Forecasting.
 Loads trained model and history store; exposes /predict, /health, and /model-info.
 """
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+
+# Ensure project root is in sys.path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.predict import CinemaPredictor, ForecastResult
 

@@ -1,12 +1,18 @@
 """Streamlit Decision-Support Dashboard for Cinema Operations Managers.
 Show-level T-48h Ticket Demand Forecasting & Staffing Optimization.
 """
+import sys
 from datetime import date, timedelta
 from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+# Ensure project root is in sys.path for robust imports across all runtimes
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.predict import CinemaPredictor
 
