@@ -1,0 +1,11 @@
+date,cinema_code,film_code,show_time,capacity,actual_tickets,predicted_tickets,abs_error,likely_operational_reason
+2018-10-02,448,1576,36,7294.3183309277,5559.0,3642.7,1916.3,High theater capacity variance
+2018-10-11,448,1573,16,3512.829363709585,3053.0,1246.1,1806.9,Unexpected local event or holiday attendance spike
+2018-10-10,448,1573,16,3620.8975217682514,2703.0,929.4,1773.6,Unexpected local event or holiday attendance spike
+2018-10-11,524,1573,18,3075.97282273008,2490.0,867.6,1622.4,Unexpected local event or holiday attendance spike
+2018-10-06,51,1576,15,4382.04833141542,1904.0,291.1,1612.9,Unexpected local event or holiday attendance spike
+2018-10-06,266,1576,9,5864.071038251366,1717.0,213.4,1503.6,Unexpected local event or holiday attendance spike
+2018-10-11,489,1573,29,2942.3134106452567,1979.0,511.6,1467.4,Unexpected local event or holiday attendance spike
+2018-10-11,352,1573,11,2832.212616074288,1769.0,302.7,1466.3,Unexpected local event or holiday attendance spike
+2018-10-06,448,1576,31,6779.911373707533,5049.0,3584.8,1464.2,High theater capacity variance
+2018-10-28,448,1576,15,4640.849469081823,743.0,2162.2,1419.2,High theater capacity variance

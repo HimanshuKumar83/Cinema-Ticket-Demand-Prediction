@@ -1,0 +1,126 @@
+{
+  "models": {
+    "baseline": {
+      "MAE": 77.626,
+      "RMSE": 154.014,
+      "WAPE_pct": 62.83,
+      "Occupancy_MAE": 0.1148,
+      "Asymmetric_Cost": 89.066,
+      "Clipped_Capacity_Pct": 0.0,
+      "N_samples": 22764
+    },
+    "ridge": {
+      "MAE": 67.499,
+      "RMSE": 137.553,
+      "WAPE_pct": 54.63,
+      "Occupancy_MAE": 0.1081,
+      "Asymmetric_Cost": 91.837,
+      "Clipped_Capacity_Pct": 0.0,
+      "N_samples": 22764
+    },
+    "lightgbm": {
+      "MAE": 48.364,
+      "RMSE": 108.963,
+      "WAPE_pct": 39.14,
+      "Occupancy_MAE": 0.0832,
+      "Asymmetric_Cost": 65.657,
+      "Clipped_Capacity_Pct": 0.54,
+      "N_samples": 22764
+    }
+  },
+  "uncertainty_80pct": {
+    "q10_residual": -41.209953177141394,
+    "q90_residual": 36.94335159768477,
+    "test_coverage_pct": 69.28483570549992
+  },
+  "operational_slices": {
+    "capacity_buckets": {
+      "Small (<=150)": {
+        "MAE": 13.898,
+        "RMSE": 20.115,
+        "WAPE_pct": 46.78,
+        "Occupancy_MAE": 0.1577,
+        "Asymmetric_Cost": 17.759,
+        "Clipped_Capacity_Pct": 4.47,
+        "N_samples": 2507
+      },
+      "Medium (151-300)": {
+        "MAE": 22.782,
+        "RMSE": 35.862,
+        "WAPE_pct": 47.47,
+        "Occupancy_MAE": 0.1039,
+        "Asymmetric_Cost": 30.931,
+        "Clipped_Capacity_Pct": 0.26,
+        "N_samples": 4309
+      },
+      "Large (>300)": {
+        "MAE": 60.694,
+        "RMSE": 128.594,
+        "WAPE_pct": 38.24,
+        "Occupancy_MAE": 0.0659,
+        "Asymmetric_Cost": 82.569,
+        "Clipped_Capacity_Pct": 0.01,
+        "N_samples": 15948
+      }
+    },
+    "sold_out": {
+      "Sold-Out (100% capacity)": {
+        "MAE": 57.861,
+        "RMSE": 110.182,
+        "WAPE_pct": 41.65,
+        "Occupancy_MAE": 0.3174,
+        "Asymmetric_Cost": 86.792,
+        "Clipped_Capacity_Pct": 30.0,
+        "N_samples": 100
+      },
+      "Normal (<100% capacity)": {
+        "MAE": 48.322,
+        "RMSE": 108.958,
+        "WAPE_pct": 39.13,
+        "Occupancy_MAE": 0.0822,
+        "Asymmetric_Cost": 65.564,
+        "Clipped_Capacity_Pct": 0.41,
+        "N_samples": 22664
+      }
+    },
+    "cold_start": {
+      "New Film (Zero Past Shows)": {
+        "MAE": 189.397,
+        "RMSE": 344.205,
+        "WAPE_pct": 73.33,
+        "Occupancy_MAE": 0.198,
+        "Asymmetric_Cost": 282.27,
+        "Clipped_Capacity_Pct": 0.86,
+        "N_samples": 349
+      },
+      "Existing Film (Has History)": {
+        "MAE": 46.168,
+        "RMSE": 101.06,
+        "WAPE_pct": 38.01,
+        "Occupancy_MAE": 0.0814,
+        "Asymmetric_Cost": 62.285,
+        "Clipped_Capacity_Pct": 0.54,
+        "N_samples": 22415
+      },
+      "Low History (<10 shows)": {
+        "MAE": 159.155,
+        "RMSE": 311.55,
+        "WAPE_pct": 73.85,
+        "Occupancy_MAE": 0.1818,
+        "Asymmetric_Cost": 236.15,
+        "Clipped_Capacity_Pct": 0.7,
+        "N_samples": 427
+      },
+      "Adequate History (>=10 shows)": {
+        "MAE": 46.246,
+        "RMSE": 101.215,
+        "WAPE_pct": 37.97,
+        "Occupancy_MAE": 0.0813,
+        "Asymmetric_Cost": 62.398,
+        "Clipped_Capacity_Pct": 0.54,
+        "N_samples": 22337
+      }
+    }
+  },
+  "selected_best_model": "lightgbm"
+}

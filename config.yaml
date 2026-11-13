@@ -1,0 +1,23 @@
+project_name: cinema-ticket-demand-forecasting
+random_seed: 42
+data:
+  kaggle_dataset: arashnic/cinema-ticket
+  raw_file_name: cinemaTicket_Ref.csv
+  raw_dir: data/raw
+  processed_dir: data/processed
+  sha256: 93ed89e5b4e005be4093e83df431101f5f50a0d0bc0dd7c3e5af1bba19695c18
+forecasting:
+  target: tickets_sold
+  prediction_horizon_hours: 48
+  prediction_horizon_days: 2
+  date_col: date
+  slot_col: show_time
+  cinema_col: cinema_code
+  film_col: film_code
+  capacity_col: capacity
+split:
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+artifacts_dir: artifacts
+reports_dir: reports

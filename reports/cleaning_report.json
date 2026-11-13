@@ -1,0 +1,10 @@
+{
+  "raw_rows": 142524,
+  "duplicate_rows_in_key": 212,
+  "rows_after_key_aggregation": 142418,
+  "rows_collapsed": 106,
+  "capacity_imputed_rows": 177,
+  "global_median_capacity": 525.8386219401633,
+  "overcapacity_shows_clipped": 198,
+  "final_clean_rows": 142418
+}

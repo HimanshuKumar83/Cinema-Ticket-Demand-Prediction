@@ -1,0 +1,12 @@
+feature,available_at_t_minus_48h,category,action,reason
+tickets_sold,False,Target Variable,TARGET (y),Primary prediction target representing show attendance.
+occu_perc,False,Target-Derived,DROP,Direct mathematical transformation of target: (tickets_sold / capacity) * 100.
+total_sales,False,Post-Show Outcome,DROP,Total revenue recorded after ticket transactions; contemporaneous with target.
+tickets_out,False,Post-Show Outcome,DROP,Cancelled/refunded tickets recorded after the booking window.
+ticket_use,False,Post-Show Outcome,DROP,Turnstile/admittance count verified at the theater door.
+ticket_price,False,Contemporaneous Ratio,DROP_CONTEMPORANEOUS,Exact ex-post quotient (total_sales / tickets_sold). Dropped to eliminate leak. Only past-lagged price allowed.
+capacity,True,Physical Theater Attribute,KEEP (with imputation),Seat count of the screening auditorium is fixed and known before showtime.
+show_time,True,Schedule Metadata,KEEP,Screening slot index published in the cinema timetable.
+cinema_code,True,Identifier,KEEP,Cinema complex identifier known at schedule time.
+film_code,True,Identifier,KEEP,Movie scheduled for the screening slot.
+date,True,Calendar Metadata,KEEP,Scheduled screening date used for temporal indexing and calendar feature extraction.

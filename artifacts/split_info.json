@@ -1,0 +1,27 @@
+{
+  "train": {
+    "start_date": "2018-05-01",
+    "end_date": "2018-05-14",
+    "days_count": 14,
+    "rows_count": 252,
+    "unique_films": 3,
+    "unique_cinemas": 2
+  },
+  "validation": {
+    "start_date": "2018-05-15",
+    "end_date": "2018-05-17",
+    "days_count": 3,
+    "rows_count": 54,
+    "unique_films": 3,
+    "new_films_vs_train": 0
+  },
+  "test": {
+    "start_date": "2018-05-18",
+    "end_date": "2018-05-20",
+    "days_count": 3,
+    "rows_count": 54,
+    "unique_films": 3,
+    "new_films_vs_train": 0,
+    "new_films_shows_count": 0
+  }
+}

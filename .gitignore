@@ -1,0 +1,32 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Data and large files
+data/
+!data/raw/.gitkeep
+
+# Environment variables
+.env
+.env.local
+
+# Python cache and checkpoints
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+.pytest_cache/
+
+# Artifacts - allow parquet lookup if needed, ignore large model files/data dumps if necessary
+# but per spec: "artifacts/*.parquet is allowed but data/ is not"
+artifacts/*.csv
+artifacts/*.raw
+
+# OS and IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+

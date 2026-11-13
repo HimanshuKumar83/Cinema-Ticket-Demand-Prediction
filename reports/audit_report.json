@@ -1,0 +1,155 @@
+{
+  "verdict": "GO",
+  "verdict_reasons": [
+    "Dataset is intact, key relationships verified, sufficient cold-start sample present."
+  ],
+  "rows_count": 142524,
+  "columns_count": 14,
+  "columns": [
+    "film_code",
+    "cinema_code",
+    "total_sales",
+    "tickets_sold",
+    "tickets_out",
+    "show_time",
+    "occu_perc",
+    "ticket_price",
+    "ticket_use",
+    "capacity",
+    "date",
+    "month",
+    "quarter",
+    "day",
+    "date_parsed"
+  ],
+  "ticket_column": "tickets_sold",
+  "date_range": {
+    "start": "2018-02-21",
+    "end": "2018-11-04",
+    "total_span_days": 257,
+    "unique_dates": 234,
+    "missing_calendar_dates_count": 23,
+    "missing_dates_samples": [
+      "2018-02-22",
+      "2018-02-24",
+      "2018-02-25",
+      "2018-02-26",
+      "2018-02-27"
+    ]
+  },
+  "entities": {
+    "unique_films": 48,
+    "unique_cinemas": 246,
+    "unique_show_time_slots": 51
+  },
+  "composite_key_duplicates": {
+    "key": [
+      "cinema_code",
+      "film_code",
+      "date",
+      "show_time"
+    ],
+    "duplicate_rows": 212,
+    "duplicate_rate_pct": 0.1487
+  },
+  "relationships": {
+    "occu_perc_vs_formula": {
+      "mean_abs_difference": 0.0,
+      "max_abs_difference": 0.0,
+      "correlation": 1.0,
+      "interpretation": "occu_perc is directly derived from (tickets / capacity) * 100 and MUST BE DROPPED to prevent severe leakage."
+    },
+    "ticket_price_vs_formula": {
+      "mean_abs_difference": 0.0,
+      "correlation": 1.0,
+      "is_derived_from_sales": true,
+      "interpretation": "ticket_price perfectly or near-perfectly matches total_sales / tickets_num. Using contemporaneous ticket_price would leak sales/tickets. Only strictly lagged average price or dropping ticket_price is permissible."
+    }
+  },
+  "show_time_analysis": {
+    "stats": {
+      "min": 1.0,
+      "q25": 2.0,
+      "median": 3.0,
+      "q75": 5.0,
+      "max": 60.0,
+      "distinct_values": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        50,
+        52,
+        60
+      ]
+    },
+    "interpretation_chosen": "Slot index or hour indicator."
+  },
+  "invalid_values_and_anomalies": {
+    "invalid_or_zero_capacity_count": 179,
+    "invalid_capacity_pct": 0.1256,
+    "negative_tickets_count": 0,
+    "negative_tickets_pct": 0.0,
+    "overcapacity_shows_count": 164,
+    "overcapacity_shows_pct": 0.1151,
+    "zero_sales_count": 0,
+    "zero_sales_pct": 0.0
+  },
+  "demand_censoring": {
+    "sold_out_or_capped_count": 619,
+    "sold_out_or_capped_pct": 0.4343,
+    "implication": "Censored demand observed; true demand when sold out may exceed physical capacity."
+  },
+  "cold_start_feasibility": {
+    "cutoff_date": "2018-08-24",
+    "early_unique_films": 32,
+    "late_unique_films": 37,
+    "new_films_first_seen_in_last_30pct": 16,
+    "shows_with_new_films_in_last_30pct": 21969,
+    "feasibility": "FEASIBLE"
+  }
+}
