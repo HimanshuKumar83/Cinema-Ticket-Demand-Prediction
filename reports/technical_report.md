@@ -151,3 +151,4 @@ All models evaluated on the held-out test set ($N = 22,764\text{ shows}$). Predi
 4. **Currency & Geography Unknown:** Monetary amounts are uncalibrated integers without documented currency or national origin. No country or inflation assumptions should be made.
 5. **No Live Competitor Signal:** Local events, weather extremes, or competing entertainment options cannot be observed at $T-48\text{h}$.
 6. **Mandatory Human Oversight:** Predictions must serve as an initial guideline for theater operations managers, who must adjust allocations using local context.
+

@@ -135,3 +135,4 @@ Every number below was directly computed on the held-out test split:
 - [x] Streamlit dashboard (`app/dashboard.py`) with mandatory human review disclaimer and cold-start alerts.
 - [x] Pytest suite with 6 passing tests using zero-dependency synthetic fixtures.
 - [x] Full `DATA_CARD.md` and `reports/technical_report.md` documenting limitations and failure modes.
+

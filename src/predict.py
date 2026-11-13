@@ -187,3 +187,4 @@ if __name__ == "__main__":
     res_cold = predictor.predict_single(cinema_code=448, film_code=99999, date="2018-10-15", show_time=3, capacity=300)
     print("\n--- Inference on Cold-Start Film ---")
     print(res_cold)
+

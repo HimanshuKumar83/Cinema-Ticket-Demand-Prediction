@@ -67,3 +67,4 @@ class HierarchicalOccupancyBaseline:
         # Clip to [0, capacity]
         clipped_tickets = np.clip(pred_tickets, 0.0, capacities)
         return clipped_tickets
+
