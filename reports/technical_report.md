@@ -10,8 +10,8 @@
 ## 1. Framing & Business Decision Context
 - **Business Goal:** Enable cinema complex managers to optimize auditorium screen assignments and front-of-house staffing levels (ushers, box office, concession stands) ahead of showtime.
 - **Prediction Unit:** Show-slot defined by the composite key `(cinema_code, film_code, date, show_time)`.
-- **Target Variable:** `tickets_sold` (show attendance volume); secondary reporting metric is `occupancy` = $\frac{\text{tickets\_sold}}{\text{capacity}}$.
-- **Prediction Horizon:** Strict $T - 48\text{h}$ lead time. For a screening on `show_date`, only observations from dates $\le \text{show\_date} - 2\text{ days}$ and predetermined schedule attributes (capacity, calendar slot) are legally accessible.
+- **Target Variable:** `tickets_sold` (show attendance volume); secondary reporting metric is `occupancy = tickets_sold / capacity`.
+- **Prediction Horizon:** Strict **T - 48h** lead time. For a screening on `show_date`, only observations from dates **<= show_date - 2 days** and predetermined schedule attributes (capacity, calendar slot) are legally accessible.
 - **Decision Support:** Strictly decision-support. Model output informs human managerial decisions and is not an autonomous allocator.
 
 ---
@@ -32,38 +32,38 @@
 
 ## 3. Data Leakage Table
 Rigorous mathematical audit conducted in [src/data/audit.py](file:///c:/Users/hp/Desktop/Cinema_Ticket/src/data/audit.py) established two critical leakage vectors:
-1. `occu_perc` correlates **1.0000** with `(tickets_sold / capacity) * 100` (mean abs difference $1.25 \times 10^{-15}$). It is target-derived and was dropped.
-2. `ticket_price` correlates **1.0000** with `total_sales / tickets_sold` (mean abs difference $5.24 \times 10^{-13}$). Contemporaneous `ticket_price` exposes target ticket sales and was dropped.
+1. `occu_perc` correlates **1.0000** with `(tickets_sold / capacity) * 100` (mean abs difference 1.25e-15). It is target-derived and was dropped.
+2. `ticket_price` correlates **1.0000** with `total_sales / tickets_sold` (mean abs difference 5.24e-13). Contemporaneous `ticket_price` exposes target ticket sales and was dropped.
 
 | Feature Name | Available at T-48h? | Category | Decision | Operational Justification |
 | :--- | :---: | :--- | :---: | :--- |
-| `tickets_sold` | No | Target Variable | **Target ($y$)** | Prediction target. Excluded from feature matrix $X$. |
-| `occu_perc` | No | Target-Derived | **DROP** | Direct mathematical derivation of target. |
+| `tickets_sold` | No | Target Variable | **Target (y)** | Prediction target. Excluded from feature matrix X. |
+| `occu_perc` | No | Target-Derived | **DROP** | Direct mathematical derivation of target: (tickets_sold / capacity) * 100. |
 | `total_sales` | No | Post-Show Outcome | **DROP** | Ex-post gross revenue recorded post-screening. |
 | `tickets_out` | No | Post-Show Outcome | **DROP** | Ex-post cancellations/refunds. |
 | `ticket_use` | No | Post-Show Outcome | **DROP** | Ex-post turnstile ticket admittance. |
-| `ticket_price` | No | Contemporaneous Ratio | **DROP** | Ex-post realization ($\frac{\text{total\_sales}}{\text{tickets\_sold}}$). |
+| `ticket_price` | No | Contemporaneous Ratio | **DROP** | Ex-post realization: total_sales / tickets_sold. |
 | `capacity` | Yes | Theater Geometry | **KEEP** | Fixed auditorium seat count (imputed if invalid). |
 | `show_time` | Yes | Timetable Metadata | **KEEP** | Screening slot index published in advance. |
 | `cinema_code` | Yes | Categorical Entity | **KEEP** | Cinema complex identifier. |
 | `film_code` | Yes | Categorical Entity | **KEEP** | Scheduled movie identifier. |
-| `date` | Yes | Temporal Index | **KEEP** | Calendar features extracted; dropped from final $X$. |
+| `date` | Yes | Temporal Index | **KEEP** | Calendar features extracted; dropped from final X. |
 
 ---
 
 ## 4. Feature Engineering Architecture
-Enforcing strict $T - 48\text{h}$ lookahead restriction (shows on date $D$ only see data from $\le D - 2\text{ days}$):
+Enforcing strict **T - 48h** lookahead restriction (shows on date D only see data from **<= D - 2 days**):
 1. **Calendar Dynamics:** `weekday`, `month`, `quarter`, `week_of_year`, `is_weekend` (Fri-Sun), `show_time` slot index.
-2. **Theater Capacity:** `capacity`, `log_capacity` ($\log(1 + \text{capacity})$), `capacity_imputed` indicator.
-3. **Film Lifecycle:** `days_since_first_show` (computed strictly from past history $\le D - 2$), `is_opening_week` ($\le 7\text{ days}$).
-4. **Historical Lags (Shifted $\ge 2$ days):**
+2. **Theater Capacity:** `capacity`, `log_capacity` (log(1 + capacity)), `capacity_imputed` indicator.
+3. **Film Lifecycle:** `days_since_first_show` (computed strictly from past history <= D - 2), `is_opening_week` (<= 7 days).
+4. **Historical Lags (Shifted >= 2 days):**
    - Rolling 7-day and 14-day mean tickets and occupancy grouped by:
      - Film (`film_mean_tickets_7d`, `film_mean_occu_7d`, `film_mean_tickets_14d`, `film_mean_occu_14d`)
      - Cinema (`cinema_mean_tickets_7d`, `cinema_mean_occu_7d`, `cinema_mean_tickets_14d`, `cinema_mean_occu_14d`)
      - Cinema-Slot (`cinema_slot_mean_tickets_14d`, `cinema_slot_mean_occu_14d`)
      - Film-Cinema (`film_cinema_mean_tickets_14d`, `film_cinema_mean_occu_14d`)
-   - Same-weekday last week ($D - 7\text{ days}$): `film_tickets_same_weekday_last_week`, `cinema_occu_same_weekday_last_week`.
-5. **Cold-Start & Fallbacks:** `film_history_count`, `cinema_history_count`, `is_new_film` (zero past shows), `is_new_cinema`, `is_low_history` ($<10\text{ shows}$), with automatic fallback to cinema/slot priors.
+   - Same-weekday last week (D - 7 days): `film_tickets_same_weekday_last_week`, `cinema_occu_same_weekday_last_week`.
+5. **Cold-Start & Fallbacks:** `film_history_count`, `cinema_history_count`, `is_new_film` (zero past shows), `is_new_cinema`, `is_low_history` (< 10 shows), with automatic fallback to cinema/slot priors.
 
 ---
 
@@ -76,9 +76,9 @@ Splits were generated strictly along chronological dates without shuffling:
 ---
 
 ## 6. Empirical Model Comparison
-All models evaluated on the held-out test set ($N = 22,764\text{ shows}$). Predictions clipped to $[0, \text{capacity}]$.
+All models evaluated on the held-out test set (N = 22,764 shows). Predictions clipped to [0, capacity].
 
-| Model Architecture | MAE (Tickets) | RMSE (Tickets) | WAPE (%) | Occupancy MAE | Asymmetric Cost ($c_u=1.5, c_o=1.0$) | Clipped at Capacity (%) |
+| Model Architecture | MAE (Tickets) | RMSE (Tickets) | WAPE (%) | Occupancy MAE | Asymmetric Cost (cu=1.5, co=1.0) | Clipped at Capacity (%) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Hierarchical Baseline** | 77.63 | 154.01 | 62.83% | 0.1148 | 89.07 | 0.00% |
 | **Ridge Regression (Occupancy)** | 67.50 | 137.55 | 54.63% | 0.1081 | 91.84 | 0.00% |
@@ -86,7 +86,7 @@ All models evaluated on the held-out test set ($N = 22,764\text{ shows}$). Predi
 
 ### Performance Analysis:
 - **Candidate vs Baseline:** LightGBM delivered a **37.7% reduction in MAE** (48.36 vs 77.63 tickets) and reduced WAPE from 62.83% to 39.14% relative to the hierarchical historical baseline.
-- **Asymmetric Operational Cost:** Penalizing under-forecasting ($1.5\times$, risking concession choke-points and customer walkouts) vs over-forecasting ($1.0\times$, idle usher staffing) shows LightGBM achieves a 26.3% lower operational cost (65.66 vs 89.07).
+- **Asymmetric Operational Cost:** Penalizing under-forecasting (1.5x, risking concession choke-points and customer walkouts) vs over-forecasting (1.0x, idle usher staffing) shows LightGBM achieves a 26.3% lower operational cost (65.66 vs 89.07).
 
 ---
 
@@ -95,29 +95,29 @@ All models evaluated on the held-out test set ($N = 22,764\text{ shows}$). Predi
 ### Capacity Bucket Slices (LightGBM):
 | Auditorium Size | Capacity Range | Test Shows | MAE (Tickets) | WAPE (%) | Occupancy MAE | Clipped (%) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Small** | $\le 150$ seats | 2,507 | 13.90 | 46.78% | 0.1577 | 4.47% |
-| **Medium** | $151 - 300$ seats | 4,309 | 22.78 | 47.47% | 0.1039 | 0.26% |
-| **Large** | $> 300$ seats | 15,948 | 60.69 | 38.24% | 0.0659 | 0.01% |
+| **Small** | <= 150 seats | 2,507 | 13.90 | 46.78% | 0.1577 | 4.47% |
+| **Medium** | 151 - 300 seats | 4,309 | 22.78 | 47.47% | 0.1039 | 0.26% |
+| **Large** | > 300 seats | 15,948 | 60.69 | 38.24% | 0.0659 | 0.01% |
 
 *Insight:* Large auditoriums dominate raw ticket MAE due to scale, but exhibit the best occupancy prediction precision (6.59% Occupancy MAE). Small auditoriums experience higher clipping (4.47%) as sellouts are more frequent.
 
 ### Cold-Start Breakdown:
 | Cohort | Definition | Test Shows | MAE (Tickets) | WAPE (%) | Occupancy MAE |
 | :--- | :--- | :---: | :---: | :---: | :---: |
-| **Existing Films** | Has prior history ($\ge 1$ show) | 22,415 | 46.17 | 38.01% | 0.0814 |
-| **New Films** | Zero prior history ($T-48\text{h}$) | 349 | 189.40 | 73.33% | 0.1980 |
-| **Low History** | $< 10$ prior shows | 427 | 159.16 | 73.85% | 0.1818 |
-| **Adequate History** | $\ge 10$ prior shows | 22,337 | 46.25 | 37.97% | 0.0813 |
+| **Existing Films** | Has prior history (>= 1 show) | 22,415 | 46.17 | 38.01% | 0.0814 |
+| **New Films** | Zero prior history (T-48h) | 349 | 189.40 | 73.33% | 0.1980 |
+| **Low History** | < 10 prior shows | 427 | 159.16 | 73.85% | 0.1818 |
+| **Adequate History** | >= 10 prior shows | 22,337 | 46.25 | 37.97% | 0.0813 |
 
 *Cold-Start Finding:* When a film debuts with zero historical tracking data, prediction error increases sharply (WAPE jumps from 38.0% to 73.3%). This empirically justifies the automated `cold_start_warning` flag in the API and dashboard alerting managers to maintain flexible staffing.
 
 ---
 
 ## 8. Uncertainty Calibration & Residual Coverage
-- **Methodology:** Validation set empirical residual quantiles ($y_{val} - \hat{y}_{val}$):
-  - $Q_{10} = -41.21$ tickets
-  - $Q_{90} = +36.94$ tickets
-- **Prediction Interval:** $[\max(0, \hat{y} - 41.2), \min(\text{capacity}, \hat{y} + 36.9)]$
+- **Methodology:** Validation set empirical residual quantiles (y_val - y_pred):
+  - Q10 = -41.21 tickets
+  - Q90 = +36.94 tickets
+- **Prediction Interval:** [max(0, y_pred - 41.2), min(capacity, y_pred + 36.9)]
 - **Held-Out Test Coverage:** **69.28%** of actual test attendances fell within the nominal 80% interval.
 - **Root Cause of Under-Coverage:** Test set (October/November 2018) experienced a higher frequency of blockbuster opening surges and high-capacity variance (evident in the top-10 worst errors), illustrating temporal concept drift.
 
