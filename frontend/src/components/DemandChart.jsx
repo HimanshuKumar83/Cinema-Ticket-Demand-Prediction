@@ -126,3 +126,4 @@ export default function DemandChart({ forecast }) {
     </div>
   );
 }
+

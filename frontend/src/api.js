@@ -42,3 +42,4 @@ export async function requestForecast(payload) {
     throw err;
   }
 }
+

@@ -1,4 +1,4 @@
-﻿# PowerShell script to launch Cinema Ticket Demand Forecasting locally
+# PowerShell script to launch Cinema Ticket Demand Forecasting locally
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "   🎬 CinemaOps AI: Demand Forecasting Launch Script     " -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan

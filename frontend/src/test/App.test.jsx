@@ -45,3 +45,4 @@ describe('CinemaOps AI React Frontend', () => {
     expect(screen.getByText(/LightGBM \(Tickets L1\) ★/i)).toBeInTheDocument();
   });
 });
+
