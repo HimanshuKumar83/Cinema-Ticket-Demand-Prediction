@@ -102,3 +102,4 @@ The automated test suite (`tests/test_pipeline.py`) validates:
 6. Cold-start detection and advisory generation.
 7. Presence of all 5 candidate models in serialized artifacts.
 8. Single and batch prediction endpoint validation with Pydantic v2 schemas.
+

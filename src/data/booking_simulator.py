@@ -172,3 +172,4 @@ class BookingSimulator:
         }
 
         return events, metrics
+

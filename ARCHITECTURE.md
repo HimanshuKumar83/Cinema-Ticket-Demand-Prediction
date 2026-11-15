@@ -146,3 +146,4 @@ The application translates raw attendance forecasts into concrete, operational m
    - **Concession Cashiers:** $\max(1, \lceil \frac{\text{Upper Bound}}{70} \rceil)$
    - **Floor Ushers:** $\max(1, \lceil \frac{\text{Upper Bound}}{120} \rceil)$
    - **Concession Units (Popcorn/Beverage):** $\text{Predicted Tickets} \times 0.70$
+
