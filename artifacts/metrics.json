@@ -1,141 +1,207 @@
 {
   "benchmark": [
     {
-      "Model": "Random Forest",
-      "MAE": 12.664,
-      "RMSE": 17.294,
-      "WAPE_pct": 8.68,
-      "Occupancy_MAE": 0.0558,
-      "Asymmetric_Cost": 14.828,
-      "Clipped_Capacity_Pct": 2.73,
+      "Model": "LightGBM",
+      "MAE": 11.271,
+      "RMSE": 15.085,
+      "WAPE_pct": 11.22,
+      "Occupancy_MAE": 0.0481,
+      "Asymmetric_Cost": 12.857,
+      "Clipped_Capacity_Pct": 1.31,
       "N_samples": 4500,
-      "Violation_Rate_Pct": 2.7333333333333334
+      "Violation_Rate_Pct": 1.3111111111111111
     },
     {
-      "Model": "LightGBM",
-      "MAE": 13.53,
-      "RMSE": 18.404,
-      "WAPE_pct": 9.28,
-      "Occupancy_MAE": 0.0594,
-      "Asymmetric_Cost": 15.391,
-      "Clipped_Capacity_Pct": 6.47,
+      "Model": "Random Forest",
+      "MAE": 12.15,
+      "RMSE": 16.036,
+      "WAPE_pct": 12.1,
+      "Occupancy_MAE": 0.0519,
+      "Asymmetric_Cost": 13.797,
+      "Clipped_Capacity_Pct": 1.0,
       "N_samples": 4500,
-      "Violation_Rate_Pct": 6.466666666666667
+      "Violation_Rate_Pct": 1.0
     },
     {
       "Model": "XGBoost",
-      "MAE": 14.205,
-      "RMSE": 19.235,
-      "WAPE_pct": 9.74,
-      "Occupancy_MAE": 0.0621,
-      "Asymmetric_Cost": 16.366,
-      "Clipped_Capacity_Pct": 4.22,
+      "MAE": 12.194,
+      "RMSE": 16.299,
+      "WAPE_pct": 12.14,
+      "Occupancy_MAE": 0.052,
+      "Asymmetric_Cost": 13.299,
+      "Clipped_Capacity_Pct": 1.22,
       "N_samples": 4500,
-      "Violation_Rate_Pct": 4.222222222222222
+      "Violation_Rate_Pct": 1.2222222222222223
     },
     {
       "Model": "Ridge Regression",
-      "MAE": 17.471,
-      "RMSE": 22.361,
-      "WAPE_pct": 11.98,
-      "Occupancy_MAE": 0.0802,
-      "Asymmetric_Cost": 20.766,
-      "Clipped_Capacity_Pct": 6.33,
+      "MAE": 16.685,
+      "RMSE": 20.494,
+      "WAPE_pct": 16.61,
+      "Occupancy_MAE": 0.0821,
+      "Asymmetric_Cost": 18.01,
+      "Clipped_Capacity_Pct": 2.38,
       "N_samples": 4500,
-      "Violation_Rate_Pct": 6.333333333333334
+      "Violation_Rate_Pct": 2.3777777777777778
     },
     {
       "Model": "Hierarchical Baseline",
-      "MAE": 45.982,
-      "RMSE": 59.676,
-      "WAPE_pct": 31.53,
-      "Occupancy_MAE": 0.1815,
-      "Asymmetric_Cost": 53.426,
-      "Clipped_Capacity_Pct": 0.0,
+      "MAE": 59.116,
+      "RMSE": 76.397,
+      "WAPE_pct": 58.86,
+      "Occupancy_MAE": 0.2295,
+      "Asymmetric_Cost": 60.979,
+      "Clipped_Capacity_Pct": 2.0,
       "N_samples": 4500,
       "Violation_Rate_Pct": 0.0
     }
   ],
   "conformal": {
     "target_coverage_pct": 80.0,
-    "residual_q10": -28.838,
-    "residual_q90": 11.246,
-    "empirical_test_coverage_pct": 79.09,
-    "mean_interval_width": 38.72
+    "method": "Capacity-Normalized Conformal Calibration",
+    "residual_q10_norm": -0.0763,
+    "residual_q90_norm": 0.0572,
+    "residual_q10": -17.61,
+    "residual_q90": 14.478,
+    "empirical_test_coverage_pct": 76.64,
+    "mean_interval_width": 33.82,
+    "warm_start_coverage_pct": 83.88,
+    "cold_start_coverage_pct": 67.69,
+    "subgroup_analysis": {
+      "Small (<=150)": {
+        "norm_coverage_pct": 65.77,
+        "norm_width": 16.0,
+        "std_coverage_pct": 91.62,
+        "std_width": 31.5,
+        "n_samples": 1002
+      },
+      "Medium (151-300)": {
+        "norm_coverage_pct": 76.24,
+        "norm_width": 28.5,
+        "std_coverage_pct": 81.09,
+        "std_width": 31.7,
+        "n_samples": 1856
+      },
+      "Large (>300)": {
+        "norm_coverage_pct": 83.74,
+        "norm_width": 50.7,
+        "std_coverage_pct": 63.28,
+        "std_width": 31.9,
+        "n_samples": 1642
+      }
+    },
+    "standard_unnormalized_coverage_pct": 76.93,
+    "standard_unnormalized_width": 31.75
   },
   "operational_slices": {
     "capacity_buckets": {
       "Small (<=150)": {
-        "MAE": 8.972,
-        "RMSE": 11.864,
-        "WAPE_pct": 12.43,
-        "Occupancy_MAE": 0.076,
-        "Asymmetric_Cost": 10.131,
-        "Clipped_Capacity_Pct": 7.51,
-        "N_samples": 1079
+        "MAE": 7.253,
+        "RMSE": 9.517,
+        "WAPE_pct": 15.36,
+        "Occupancy_MAE": 0.061,
+        "Asymmetric_Cost": 7.989,
+        "Clipped_Capacity_Pct": 1.5,
+        "N_samples": 1002
       },
       "Medium (151-300)": {
-        "MAE": 12.916,
-        "RMSE": 17.217,
-        "WAPE_pct": 10.31,
-        "Occupancy_MAE": 0.0616,
-        "Asymmetric_Cost": 14.548,
-        "Clipped_Capacity_Pct": 6.66,
-        "N_samples": 1833
+        "MAE": 10.29,
+        "RMSE": 13.296,
+        "WAPE_pct": 11.94,
+        "Occupancy_MAE": 0.0491,
+        "Asymmetric_Cost": 11.539,
+        "Clipped_Capacity_Pct": 1.62,
+        "N_samples": 1856
       },
       "Large (>300)": {
-        "MAE": 17.337,
-        "RMSE": 22.847,
-        "WAPE_pct": 7.89,
-        "Occupancy_MAE": 0.0457,
-        "Asymmetric_Cost": 19.938,
-        "Clipped_Capacity_Pct": 5.54,
-        "N_samples": 1588
+        "MAE": 14.833,
+        "RMSE": 19.198,
+        "WAPE_pct": 9.95,
+        "Occupancy_MAE": 0.0391,
+        "Asymmetric_Cost": 17.316,
+        "Clipped_Capacity_Pct": 0.85,
+        "N_samples": 1642
       }
     },
     "sold_out": {
       "Sold-Out (100% capacity)": {
-        "MAE": 5.862,
-        "RMSE": 12.16,
-        "WAPE_pct": 2.36,
-        "Occupancy_MAE": 0.0257,
-        "Asymmetric_Cost": 8.792,
-        "Clipped_Capacity_Pct": 39.87,
-        "N_samples": 617
+        "MAE": 8.061,
+        "RMSE": 13.853,
+        "WAPE_pct": 3.2,
+        "Occupancy_MAE": 0.0326,
+        "Asymmetric_Cost": 12.092,
+        "Clipped_Capacity_Pct": 43.64,
+        "N_samples": 110
       },
       "Normal (<100% capacity)": {
-        "MAE": 14.749,
-        "RMSE": 19.21,
-        "WAPE_pct": 11.39,
-        "Occupancy_MAE": 0.0648,
-        "Asymmetric_Cost": 16.439,
-        "Clipped_Capacity_Pct": 1.16,
-        "N_samples": 3883
+        "MAE": 11.352,
+        "RMSE": 15.115,
+        "WAPE_pct": 11.75,
+        "Occupancy_MAE": 0.0485,
+        "Asymmetric_Cost": 12.876,
+        "Clipped_Capacity_Pct": 0.25,
+        "N_samples": 4390
       }
     },
     "cold_start": {
+      "Warm-Start Shows (Movie in Train)": {
+        "MAE": 9.469,
+        "RMSE": 12.636,
+        "WAPE_pct": 10.84,
+        "Occupancy_MAE": 0.0398,
+        "Asymmetric_Cost": 11.181,
+        "Clipped_Capacity_Pct": 0.24,
+        "N_samples": 2488
+      },
+      "Cold-Start Shows (New Movie)": {
+        "MAE": 13.5,
+        "RMSE": 17.65,
+        "WAPE_pct": 11.58,
+        "Occupancy_MAE": 0.0584,
+        "Asymmetric_Cost": 14.928,
+        "Clipped_Capacity_Pct": 2.63,
+        "N_samples": 2012
+      },
       "New Film (Zero Past Shows)": {
-        "MAE": 13.53,
-        "RMSE": 18.404,
-        "WAPE_pct": 9.28,
-        "Occupancy_MAE": 0.0594,
-        "Asymmetric_Cost": 15.391,
-        "Clipped_Capacity_Pct": 6.47,
-        "N_samples": 4500
+        "MAE": 13.5,
+        "RMSE": 17.65,
+        "WAPE_pct": 11.58,
+        "Occupancy_MAE": 0.0584,
+        "Asymmetric_Cost": 14.928,
+        "Clipped_Capacity_Pct": 2.63,
+        "N_samples": 2012
+      },
+      "Existing Film (Has History)": {
+        "MAE": 9.469,
+        "RMSE": 12.636,
+        "WAPE_pct": 10.84,
+        "Occupancy_MAE": 0.0398,
+        "Asymmetric_Cost": 11.181,
+        "Clipped_Capacity_Pct": 0.24,
+        "N_samples": 2488
       },
       "Low History (<10 shows)": {
-        "MAE": 13.53,
-        "RMSE": 18.404,
-        "WAPE_pct": 9.28,
-        "Occupancy_MAE": 0.0594,
-        "Asymmetric_Cost": 15.391,
-        "Clipped_Capacity_Pct": 6.47,
-        "N_samples": 4500
+        "MAE": 13.268,
+        "RMSE": 17.395,
+        "WAPE_pct": 11.58,
+        "Occupancy_MAE": 0.0575,
+        "Asymmetric_Cost": 14.674,
+        "Clipped_Capacity_Pct": 2.49,
+        "N_samples": 2127
+      },
+      "Adequate History (>=10 shows)": {
+        "MAE": 9.481,
+        "RMSE": 12.662,
+        "WAPE_pct": 10.81,
+        "Occupancy_MAE": 0.0397,
+        "Asymmetric_Cost": 11.228,
+        "Clipped_Capacity_Pct": 0.25,
+        "N_samples": 2373
       }
     }
   },
   "best_model": "lightgbm",
-  "best_model_test_mae": 13.53,
-  "best_model_test_wape": 9.28,
-  "best_model_test_rmse": 18.404
+  "best_model_test_mae": 11.271,
+  "best_model_test_wape": 11.22,
+  "best_model_test_rmse": 15.085
 }

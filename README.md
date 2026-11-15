@@ -26,40 +26,56 @@ The system assists cinema complex managers in two primary operational decisions:
 ---
 
 ## 📊 Held-Out Test Set 5-Model Benchmark
-All 5 candidate models were evaluated on the exact same held-out chronological test partition (**4,500 shows**, 2025-01-12 to 2025-03-19):
+All 5 candidate models were evaluated on the exact same held-out chronological test partition (**4,500 shows**, 2025-01-13 to 2025-03-20):
 
-| Model Architecture | Objective / Approach | Test MAE | Test RMSE | Test WAPE (%) | Occupancy MAE | Unclipped Violation Rate |
+| Model Architecture | Objective / Approach | Test MAE | Test RMSE | Test WAPE (%) | Occupancy MAE | Asymmetric Cost (1.5x) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Random Forest Regressor** | Non-linear ensemble (100 trees) | **12.66** | **17.29** | **8.68%** | **0.0558** | 2.73% |
-| **LightGBM Regressor (L1)** | L1 loss MAE optimization | **13.53** | **18.40** | **9.28%** | **0.0594** | 6.47% |
-| **XGBoost Regressor** | Gradient boosted trees | 14.21 | 19.23 | 9.74% | 0.0621 | 4.22% |
-| **Ridge Regression** | Scaled regularized linear benchmark | 17.47 | 22.36 | 11.98% | 0.0802 | 6.33% |
-| **Hierarchical Baseline** | 4-level mean occupancy fallback | 45.98 | 59.68 | 31.53% | 0.1815 | 0.00% |
+| **LightGBM Regressor (L1)** ★ | L1 loss MAE optimization | **11.27** | **15.09** | **11.22%** | **0.0481** | **12.86** |
+| **Random Forest Regressor** | Non-linear ensemble (100 trees) | 12.15 | 16.04 | 12.10% | 0.0519 | 13.80 |
+| **XGBoost Regressor** | Gradient boosted trees | 12.19 | 16.30 | 12.14% | 0.0520 | 13.30 |
+| **Ridge Regression** | Scaled regularized linear benchmark | 16.68 | 20.49 | 16.61% | 0.0821 | 18.01 |
+| **Hierarchical Baseline** | 4-level mean occupancy fallback | 59.12 | 76.40 | 58.86% | 0.2295 | 60.98 |
 
 *Post-processing guarantees: All raw predictions are strictly clamped within $[0, \text{screen\_capacity}]$, ensuring a zero operational capacity violation rate in production.*
 
 ---
 
-## ⚖️ Uncertainty Calibration & Conformal Prediction
-- **Calibration Method:** Non-parametric conformal prediction using validation residual quantiles:
-  - $10^{\text{th}}$ Percentile ($q_{10}$): $-28.84$ tickets
-  - $90^{\text{th}}$ Percentile ($q_{90}$): $+11.25$ tickets
+## ❄️ Empirical Cold-Start vs. Warm-Start Evaluation
+Following extended lifecycle simulation with 37 train/test overlapping movies, the held-out chronological test partition contains both warm-start and cold-start titles:
+
+| Evaluation Slice | Definition | Test Shows ($N$) | Test MAE | Test RMSE | Test WAPE (%) | Occupancy MAE | 80% Coverage |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Warm-Start Shows** | Movie observed in training split | **2,488 (55.3%)** | **9.47** | **12.64** | **10.84%** | **0.0398** | **83.88%** |
+| **Cold-Start Shows** | New movie debut (zero train shows) | **2,012 (44.7%)** | **13.50** | **17.65** | **11.58%** | **0.0584** | **67.69%** |
+| **Adequate History** | Screening count $\ge 10$ shows | 2,373 (52.7%) | 9.48 | 12.66 | 10.81% | 0.0397 | 83.82% |
+| **Low History** | Screening count $< 10$ shows | 2,127 (47.3%) | 13.27 | 17.40 | 11.58% | 0.0575 | 68.64% |
+
+---
+
+## ⚖️ Capacity-Normalized Conformal Prediction (80% Interval)
+- **Method:** Capacity-Normalized Conformal Calibration ($e_{\text{norm}} = \frac{y - \hat{y}}{\text{capacity}}$):
+  - Normalized Quantiles: $q_{10,\text{norm}} = -0.0763$, $q_{90,\text{norm}} = +0.0572$
+  - Unnormalized Residuals: $q_{10} = -17.61$, $q_{90} = +14.48$
 - **Target Coverage:** 80.0%
-- **Empirical Test Set Coverage:** **79.09%** (closely matching theoretical calibration)
-- **Mean Interval Width:** 38.7 tickets
+- **Empirical Test Set Coverage:** **76.64%** (Warm: 83.88%, Cold: 67.69%)
+- **Subgroup Calibration by Room Size:**
+  - *Small Screens ($\le 150$ seats):* Mean interval width: **16.0 tickets** (vs. 31.5 for homoscedastic)
+  - *Medium Screens ($151-300$ seats):* Mean interval width: **28.5 tickets** (76.24% coverage)
+  - *Large Screens ($> 300$ seats):* Mean interval width: **50.7 tickets** (83.74% coverage vs. 63.28% for homoscedastic)
+- **Reliability Diagram:** Saved to `reports/calibration_curve.png`.
 
 ---
 
 ## 🧠 TreeSHAP Feature Attributions
 Global feature importance computed via TreeSHAP on test observations:
-1. `advance_bookings_t48`: Mean $|SHAP| = 49.51$ (Dominant signal)
-2. `booking_velocity_24h`: Mean $|SHAP| = 15.82$ (Recent demand acceleration)
-3. `screen_capacity`: Mean $|SHAP| = 15.37$ (Room ceiling constraint)
-4. `is_blockbuster`: Mean $|SHAP| = 9.64$ (Title tier)
-5. `slot_hist_avg_demand`: Mean $|SHAP| = 8.51$ (Time slot bias)
-6. `booking_velocity_previous_24h`: Mean $|SHAP| = 4.83$ (Momentum baseline)
-7. `movie_hist_avg_demand`: Mean $|SHAP| = 4.44$ (Title track record)
-8. `ticket_price`: Mean $|SHAP| = 3.90$ (Price elasticity)
+1. `advance_bookings_t48`: Mean $|SHAP| = 61.22$ (Dominant demand anchor)
+2. `is_blockbuster`: Mean $|SHAP| = 15.36$ (Title tier premium)
+3. `booking_velocity_24h`: Mean $|SHAP| = 12.99$ (Recent momentum)
+4. `screen_capacity`: Mean $|SHAP| = 8.18$ (Room ceiling constraint)
+5. `slot_hist_avg_demand`: Mean $|SHAP| = 5.74$ (Time slot bias)
+6. `movie_release_age_days`: Mean $|SHAP| = 5.46$ (Theatrical decay curve)
+7. `booking_velocity_previous_24h`: Mean $|SHAP| = 4.84$ (Acceleration baseline)
+8. `velocity_ratio`: Mean $|SHAP| = 3.21$ (Surge velocity multiplier)
 
 ---
 

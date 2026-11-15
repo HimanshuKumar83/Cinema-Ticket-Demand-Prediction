@@ -1,7 +1,37 @@
 {
   "target_coverage_pct": 80.0,
-  "residual_q10": -28.838,
-  "residual_q90": 11.246,
-  "empirical_test_coverage_pct": 79.09,
-  "mean_interval_width": 38.72
+  "method": "Capacity-Normalized Conformal Calibration",
+  "residual_q10_norm": -0.0763,
+  "residual_q90_norm": 0.0572,
+  "residual_q10": -17.61,
+  "residual_q90": 14.478,
+  "empirical_test_coverage_pct": 76.64,
+  "mean_interval_width": 33.82,
+  "warm_start_coverage_pct": 83.88,
+  "cold_start_coverage_pct": 67.69,
+  "subgroup_analysis": {
+    "Small (<=150)": {
+      "norm_coverage_pct": 65.77,
+      "norm_width": 16.0,
+      "std_coverage_pct": 91.62,
+      "std_width": 31.5,
+      "n_samples": 1002
+    },
+    "Medium (151-300)": {
+      "norm_coverage_pct": 76.24,
+      "norm_width": 28.5,
+      "std_coverage_pct": 81.09,
+      "std_width": 31.7,
+      "n_samples": 1856
+    },
+    "Large (>300)": {
+      "norm_coverage_pct": 83.74,
+      "norm_width": 50.7,
+      "std_coverage_pct": 63.28,
+      "std_width": 31.9,
+      "n_samples": 1642
+    }
+  },
+  "standard_unnormalized_coverage_pct": 76.93,
+  "standard_unnormalized_width": 31.75
 }

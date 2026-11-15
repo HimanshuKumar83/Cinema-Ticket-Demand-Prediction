@@ -96,6 +96,14 @@ def evaluate_slices(
             )
 
     # 3. Cold-start slices (if present in dataframe)
+    if "is_warm_start" in df_eval.columns:
+        for status, label in [(1, "Warm-Start Shows (Movie in Train)"), (0, "Cold-Start Shows (New Movie)")]:
+            sub = df_eval[df_eval["is_warm_start"] == status]
+            if len(sub) > 0:
+                slice_results["cold_start"][label] = compute_metrics(
+                    sub["y_true"].values, sub["y_pred"].values, sub["cap"].values
+                )
+
     if "is_new_film" in df_eval.columns:
         for status, label in [(1, "New Film (Zero Past Shows)"), (0, "Existing Film (Has History)")]:
             sub = df_eval[df_eval["is_new_film"] == status]

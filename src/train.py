@@ -242,29 +242,121 @@ def train_and_benchmark_all():
         json.dump(benchmark_json, f, indent=2)
 
     # -------------------------------------------------------------
-    # UNCERTAINTY CALIBRATION (Conformal Prediction 80% Interval)
+    # UNCERTAINTY CALIBRATION (Capacity-Normalized Conformal Prediction)
     # -------------------------------------------------------------
-    print("\nComputing 80% Conformal Prediction Intervals from Validation Residuals...")
+    print("\nComputing 80% Conformal Prediction Intervals (Normalized & Standard)...")
     val_residuals = y_val - preds_lgb_val
     q10 = float(np.percentile(val_residuals, 10.0))
     q90 = float(np.percentile(val_residuals, 90.0))
 
-    # Test coverage
-    test_lower = np.maximum(0.0, preds_lgb_test + q10)
-    test_upper = np.minimum(cap_test, preds_lgb_test + q90)
-    empirical_coverage = float(np.mean((y_test >= test_lower) & (y_test <= test_upper)) * 100.0)
-    mean_interval_width = float(np.mean(test_upper - test_lower))
+    val_residuals_norm = (y_val - preds_lgb_val) / np.maximum(cap_val, 1.0)
+    q10_norm = float(np.percentile(val_residuals_norm, 10.0))
+    q90_norm = float(np.percentile(val_residuals_norm, 90.0))
+
+    # Test intervals with Capacity-Normalized Conformal Calibration
+    test_lower_norm = np.maximum(0.0, preds_lgb_test + q10_norm * cap_test)
+    test_upper_norm = np.minimum(cap_test, preds_lgb_test + q90_norm * cap_test)
+    coverage_norm = float(np.mean((y_test >= test_lower_norm) & (y_test <= test_upper_norm)) * 100.0)
+    width_norm = float(np.mean(test_upper_norm - test_lower_norm))
+
+    # Standard unnormalized intervals for comparison
+    test_lower_std = np.maximum(0.0, preds_lgb_test + q10)
+    test_upper_std = np.minimum(cap_test, preds_lgb_test + q90)
+    coverage_std = float(np.mean((y_test >= test_lower_std) & (y_test <= test_upper_std)) * 100.0)
+    width_std = float(np.mean(test_upper_std - test_lower_std))
+
+    # Subgroup coverage analysis across capacity buckets
+    mask_small = cap_test <= 150
+    mask_med = (cap_test > 150) & (cap_test <= 300)
+    mask_large = cap_test > 300
+
+    subgroup_analysis = {
+        "Small (<=150)": {
+            "norm_coverage_pct": round(float(np.mean((y_test[mask_small] >= test_lower_norm[mask_small]) & (y_test[mask_small] <= test_upper_norm[mask_small])) * 100.0), 2),
+            "norm_width": round(float(np.mean(test_upper_norm[mask_small] - test_lower_norm[mask_small])), 1),
+            "std_coverage_pct": round(float(np.mean((y_test[mask_small] >= test_lower_std[mask_small]) & (y_test[mask_small] <= test_upper_std[mask_small])) * 100.0), 2),
+            "std_width": round(float(np.mean(test_upper_std[mask_small] - test_lower_std[mask_small])), 1),
+            "n_samples": int(np.sum(mask_small)),
+        },
+        "Medium (151-300)": {
+            "norm_coverage_pct": round(float(np.mean((y_test[mask_med] >= test_lower_norm[mask_med]) & (y_test[mask_med] <= test_upper_norm[mask_med])) * 100.0), 2),
+            "norm_width": round(float(np.mean(test_upper_norm[mask_med] - test_lower_norm[mask_med])), 1),
+            "std_coverage_pct": round(float(np.mean((y_test[mask_med] >= test_lower_std[mask_med]) & (y_test[mask_med] <= test_upper_std[mask_med])) * 100.0), 2),
+            "std_width": round(float(np.mean(test_upper_std[mask_med] - test_lower_std[mask_med])), 1),
+            "n_samples": int(np.sum(mask_med)),
+        },
+        "Large (>300)": {
+            "norm_coverage_pct": round(float(np.mean((y_test[mask_large] >= test_lower_norm[mask_large]) & (y_test[mask_large] <= test_upper_norm[mask_large])) * 100.0), 2),
+            "norm_width": round(float(np.mean(test_upper_norm[mask_large] - test_lower_norm[mask_large])), 1),
+            "std_coverage_pct": round(float(np.mean((y_test[mask_large] >= test_lower_std[mask_large]) & (y_test[mask_large] <= test_upper_std[mask_large])) * 100.0), 2),
+            "std_width": round(float(np.mean(test_upper_std[mask_large] - test_lower_std[mask_large])), 1),
+            "n_samples": int(np.sum(mask_large)),
+        },
+    }
+
+    # Warm vs Cold coverage
+    train_movies = set(df_train["movie_id"].unique())
+    mask_warm = df_test["movie_id"].isin(train_movies).values
+    mask_cold = ~mask_warm
+
+    warm_cov = float(np.mean((y_test[mask_warm] >= test_lower_norm[mask_warm]) & (y_test[mask_warm] <= test_upper_norm[mask_warm])) * 100.0) if np.sum(mask_warm) > 0 else 0.0
+    cold_cov = float(np.mean((y_test[mask_cold] >= test_lower_norm[mask_cold]) & (y_test[mask_cold] <= test_upper_norm[mask_cold])) * 100.0) if np.sum(mask_cold) > 0 else 0.0
 
     conformal_summary = {
         "target_coverage_pct": 80.0,
+        "method": "Capacity-Normalized Conformal Calibration",
+        "residual_q10_norm": round(q10_norm, 4),
+        "residual_q90_norm": round(q90_norm, 4),
         "residual_q10": round(q10, 3),
         "residual_q90": round(q90, 3),
-        "empirical_test_coverage_pct": round(empirical_coverage, 2),
-        "mean_interval_width": round(mean_interval_width, 2),
+        "empirical_test_coverage_pct": round(coverage_norm, 2),
+        "mean_interval_width": round(width_norm, 2),
+        "warm_start_coverage_pct": round(warm_cov, 2),
+        "cold_start_coverage_pct": round(cold_cov, 2),
+        "subgroup_analysis": subgroup_analysis,
+        "standard_unnormalized_coverage_pct": round(coverage_std, 2),
+        "standard_unnormalized_width": round(width_std, 2),
     }
-    print(f"  Residual Q10: {q10:.2f}, Q90: {q90:.2f}")
-    print(f"  Empirical Test Coverage: {empirical_coverage:.2f}% (Target: 80%)")
-    print(f"  Mean 80% Interval Width: {mean_interval_width:.1f} tickets")
+
+    print(f"  Normalized Residual Q10: {q10_norm:.4f}, Q90: {q90_norm:.4f}")
+    print(f"  Empirical Test Coverage (Capacity-Normalized): {coverage_norm:.2f}% (Target: 80%)")
+    print(f"  Mean 80% Interval Width: {width_norm:.1f} tickets")
+    print(f"  Warm-Start Coverage: {warm_cov:.2f}% (N={int(np.sum(mask_warm))}) | Cold-Start Coverage: {cold_cov:.2f}% (N={int(np.sum(mask_cold))})")
+
+    # Generate Calibration Curve Reliability Diagram
+    try:
+        nominal_levels = [0.50, 0.60, 0.70, 0.80, 0.90, 0.95]
+        empirical_norm_list = []
+        empirical_std_list = []
+        for alpha in nominal_levels:
+            tail = (1.0 - alpha) / 2.0
+            # Normalized
+            ql_n = np.percentile(val_residuals_norm, tail * 100.0)
+            qu_n = np.percentile(val_residuals_norm, (1.0 - tail) * 100.0)
+            cov_n = np.mean((y_test >= (preds_lgb_test + ql_n * cap_test)) & (y_test <= (preds_lgb_test + qu_n * cap_test))) * 100.0
+            empirical_norm_list.append(cov_n)
+            # Standard
+            ql_s = np.percentile(val_residuals, tail * 100.0)
+            qu_s = np.percentile(val_residuals, (1.0 - tail) * 100.0)
+            cov_s = np.mean((y_test >= (preds_lgb_test + ql_s)) & (y_test <= (preds_lgb_test + qu_s))) * 100.0
+            empirical_std_list.append(cov_s)
+
+        plt.figure(figsize=(8, 6))
+        nom_pct = [a * 100.0 for a in nominal_levels]
+        plt.plot(nom_pct, nom_pct, "k--", label="Ideal Perfect Calibration", linewidth=1.5)
+        plt.plot(nom_pct, empirical_norm_list, "s-", color="#10B981", label="Capacity-Normalized Conformal (Proposed)", linewidth=2)
+        plt.plot(nom_pct, empirical_std_list, "o--", color="#6366F1", label="Standard Homoscedastic Residuals", linewidth=1.5)
+        plt.xlabel("Nominal Coverage Level (%)", fontsize=11, fontweight="bold")
+        plt.ylabel("Empirical Test Coverage (%)", fontsize=11, fontweight="bold")
+        plt.title("CinemaOps AI: Prediction Interval Calibration Reliability Diagram", fontsize=12, fontweight="bold")
+        plt.grid(True, alpha=0.3)
+        plt.legend(loc="upper left")
+        plt.tight_layout()
+        plt.savefig(REPORTS_DIR / "calibration_curve.png", dpi=200, bbox_inches="tight")
+        plt.close()
+        print(f"Calibration curve saved to {REPORTS_DIR / 'calibration_curve.png'}")
+    except Exception as e:
+        print(f"Warning: Calibration curve plot failed: {e}")
 
     with open(ARTIFACTS_DIR / "conformal_quantiles.json", "w") as f:
         json.dump(conformal_summary, f, indent=2)
@@ -272,8 +364,9 @@ def train_and_benchmark_all():
     # -------------------------------------------------------------
     # COLD-START & SLICING EVALUATION
     # -------------------------------------------------------------
-    print("\nEvaluating Operational Slices & Cold-Start Segments on LightGBM...")
+    print("\nEvaluating Operational Slices & Warm/Cold-Start Segments on LightGBM...")
     df_test_eval = df_test.copy()
+    df_test_eval["is_warm_start"] = mask_warm.astype(int)
     df_test_eval["is_new_film"] = X_test_df["is_new_movie"]
     df_test_eval["is_low_history"] = X_test_df["is_low_history"]
     df_test_eval["capacity"] = cap_test
@@ -355,6 +448,8 @@ def train_and_benchmark_all():
         "feature_cols": feature_cols,
         "residual_q10": q10,
         "residual_q90": q90,
+        "residual_q10_norm": q10_norm,
+        "residual_q90_norm": q90_norm,
         "priors": priors.priors,
         "metrics": full_metrics,
         "shap_importance": shap_importance,

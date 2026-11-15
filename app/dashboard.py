@@ -106,11 +106,11 @@ if model_ready:
         with c1:
             st.markdown('<div class="metric-card"><div class="kpi-title">Forecast Horizon</div><div class="kpi-value">T-48h</div><div class="kpi-sub">Strictly zero future lookahead</div></div>', unsafe_allow_html=True)
         with c2:
-            st.markdown('<div class="metric-card"><div class="kpi-title">Best Model MAE</div><div class="kpi-value">13.53</div><div class="kpi-sub">LightGBM (Held-out Test)</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="metric-card"><div class="kpi-title">Best Model MAE</div><div class="kpi-value">11.27</div><div class="kpi-sub">LightGBM (Held-out Test)</div></div>', unsafe_allow_html=True)
         with c3:
-            st.markdown('<div class="metric-card"><div class="kpi-title">Test WAPE</div><div class="kpi-value">9.28%</div><div class="kpi-sub">Weighted percentage error</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="metric-card"><div class="kpi-title">Test WAPE</div><div class="kpi-value">11.22%</div><div class="kpi-sub">Weighted percentage error</div></div>', unsafe_allow_html=True)
         with c4:
-            st.markdown('<div class="metric-card"><div class="kpi-title">80% Interval Coverage</div><div class="kpi-value">79.09%</div><div class="kpi-sub">Target: 80% (Conformal)</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="metric-card"><div class="kpi-title">80% Interval Coverage</div><div class="kpi-value">76.64%</div><div class="kpi-sub">Capacity-Normalized Conformal</div></div>', unsafe_allow_html=True)
 
         st.markdown("---")
         col_flow, col_meta = st.columns([3, 2])
@@ -340,12 +340,13 @@ if model_ready:
         st.caption("Calculated to prevent box-office queues and concession stockouts:")
 
         sc1, sc2, sc3, sc4 = st.columns(4)
-        sc1.metric("Box Office / Scanners", f"{adv['box_office_staff']} staff")
-        sc2.metric("Concession Cashiers", f"{adv['box_office_staff']} staff")
-        sc3.metric("Floor Ushers", f"{adv['ushers_count']} staff")
-        sc4.metric("Cleaning Crew", f"{adv['cleaning_crew']} staff")
+        sc1.metric("Box Office / Scanners", f"{adv.get('box_office_staff', 1)} staff")
+        sc2.metric("Concession Cashiers", f"{adv.get('concession_cashiers', 2)} staff")
+        sc3.metric("Floor Ushers", f"{adv.get('ushers_count', 1)} staff")
+        sc4.metric("Cleaning Crew", f"{adv.get('cleaning_crew', 2)} staff")
 
-        st.metric("Estimated Concession Units (Popcorn/Soda)", f"{adv['concession_inventory_units']} units", help="Projected 0.70 concession units per attendee")
+        st.metric("Total Floor Staff", f"{adv.get('total_floor_staff', 6)} staff members")
+        st.metric("Estimated Concession Units (Popcorn/Soda)", f"{adv.get('concession_inventory_units', 100)} units", help="Projected 0.70 concession units per attendee")
 
     # -------------------------------------------------------------
     # TAB 7: MONITORING & GOVERNANCE
@@ -359,9 +360,18 @@ if model_ready:
         - **Managerial Review Gate:** Decision support only. Automated screen reallocation is prohibited.
         """)
 
-        st.markdown("#### 📈 Residual Diagnostics Plot")
-        res_plot = Path("reports/residual_plot.png")
-        if res_plot.exists():
-            st.image(str(res_plot), caption="LightGBM Residuals vs Prediction on Held-Out Test Split")
-        else:
-            st.info("Residual plot not available.")
+        st.markdown("#### 📈 Uncertainty Calibration & Residual Diagnostics")
+        c_diag1, c_diag2 = st.columns(2)
+        with c_diag1:
+            calib_plot = Path("reports/calibration_curve.png")
+            if calib_plot.exists():
+                st.image(str(calib_plot), caption="80% Prediction Interval Calibration Reliability Curve")
+            else:
+                st.caption("Calibration plot not generated.")
+
+        with c_diag2:
+            res_plot = Path("reports/residual_plot.png")
+            if res_plot.exists():
+                st.image(str(res_plot), caption="LightGBM Residuals vs Prediction on Held-Out Test Split")
+            else:
+                st.caption("Residual plot not available.")

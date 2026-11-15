@@ -104,17 +104,25 @@ class OperationalAdvisory(BaseModel):
     suggested_capacity_range: str
     box_office_staff: int
     ushers_count: int
+    concession_cashiers: Optional[int] = None
     cleaning_crew: int
+    total_floor_staff: Optional[int] = None
     concession_inventory_units: int
-    managerial_review_required: bool
+    managerial_review_required: bool = True
+    operational_disclaimer: Optional[str] = "Rule-based operational decision support only. Not ML output. Managerial sign-off required."
+    staffing_details: Optional[Dict[str, Any]] = None
+    screen_details: Optional[Dict[str, Any]] = None
 
 
 class PredictResponse(BaseModel):
     predicted_tickets: float
     predicted_occupancy: float
     screen_capacity: float
+    capacity: Optional[float] = None
     interval_80_lower: float
+    lower_bound: Optional[float] = None
     interval_80_upper: float
+    upper_bound: Optional[float] = None
     is_cold_start: bool
     cold_start_warning: Optional[str]
     positive_drivers: List[DriverImpact]
@@ -174,9 +182,9 @@ def model_info():
         prediction_horizon="Strictly T-48h prior to showtime (Zero Lookahead)",
         features_count=len(pred.feature_cols),
         features_list=pred.feature_cols,
-        best_model_test_mae=float(metrics.get("best_model_test_mae", 13.53)),
-        best_model_test_wape=float(metrics.get("best_model_test_wape", 9.28)),
-        conformal_coverage_pct=float(metrics.get("conformal", {}).get("empirical_test_coverage_pct", 79.09)),
+        best_model_test_mae=float(metrics.get("best_model_test_mae", 11.27)),
+        best_model_test_wape=float(metrics.get("best_model_test_wape", 11.22)),
+        conformal_coverage_pct=float(metrics.get("conformal", {}).get("empirical_test_coverage_pct", 76.64)),
         residual_q10=pred.q10,
         residual_q90=pred.q90,
     )
@@ -216,8 +224,11 @@ def predict(req: PredictRequest):
             predicted_tickets=res.predicted_tickets,
             predicted_occupancy=res.predicted_occupancy,
             screen_capacity=res.screen_capacity,
+            capacity=res.capacity or res.screen_capacity,
             interval_80_lower=res.interval_80_lower,
+            lower_bound=res.lower_bound or res.interval_80_lower,
             interval_80_upper=res.interval_80_upper,
+            upper_bound=res.upper_bound or res.interval_80_upper,
             is_cold_start=res.is_cold_start,
             cold_start_warning=res.cold_start_warning,
             positive_drivers=[DriverImpact(**d) for d in res.positive_drivers],

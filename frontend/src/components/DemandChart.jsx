@@ -7,9 +7,9 @@ export default function DemandChart({ forecast }) {
     predicted_tickets: tickets,
     interval_80_lower: lower,
     interval_80_upper: upper,
-    capacity,
     is_cold_start: isCold
   } = forecast;
+  const capacity = forecast.screen_capacity || forecast.capacity || 250;
 
   // Compute SVG scale
   const maxAxis = Math.max(capacity * 1.25, upper * 1.25, 100);

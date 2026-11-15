@@ -1,7 +1,7 @@
 """
 CinemaOps AI - Synthetic Data Generator
 Generates realistic show metadata and granular booking event logs over 18 months (30,000+ shows)
-for leak-free, reproducible T-48 demand forecasting.
+with natural movie lifecycle overlap across chronological split boundaries for genuine warm vs. cold-start evaluation.
 """
 
 import os
@@ -77,7 +77,6 @@ def build_cinema_catalog(num_cinemas: int = 30, seed: int = 42) -> List[Dict]:
         
         # Cinema has 3 to 5 screens with varied capacities
         num_screens = int(rng.choice([3, 4, 5]))
-        screens = []
         screen_templates = [
             {"screen_id": 1, "name": "Screen 1 (IMAX)", "capacity": int(rng.choice([360, 400, 450]))},
             {"screen_id": 2, "name": "Screen 2 (Large)", "capacity": int(rng.choice([250, 280, 320]))},
@@ -98,12 +97,18 @@ def build_cinema_catalog(num_cinemas: int = 30, seed: int = 42) -> List[Dict]:
     return cinemas
 
 
-def build_movie_catalog(num_movies: int = 100, start_date: str = "2024-01-01", end_date: str = "2025-06-30", seed: int = 42) -> List[Dict]:
-    """Generate 100 movies with staggered release dates across the 18 months."""
+def build_movie_catalog(num_movies: int = 100, start_date: str = "2024-01-01", seed: int = 42) -> List[Dict]:
+    """
+    Generate 100 movies with realistic theatrical lifecycles:
+    - 25 Blockbusters: 16–25 weeks
+    - 50 Medium-performing titles: 12–18 weeks
+    - 25 Short-run / specialized titles: 6–10 weeks
+    
+    Release schedule ensures movies span across train, validation, and test split boundaries,
+    producing realistic ~60–70% warm-start and ~30–40% cold-start test partitions without artificial copying.
+    """
     rng = np.random.default_rng(seed + 10)
     start_dt = pd.to_datetime(start_date)
-    end_dt = pd.to_datetime(end_date)
-    total_days = (end_dt - start_dt).days
 
     titles_prefix = [
         "Avatar: Echoes of", "The Dark", "Guardians of", "Quantum", "Mission",
@@ -119,24 +124,42 @@ def build_movie_catalog(num_movies: int = 100, start_date: str = "2024-01-01", e
     ]
 
     movies = []
-    # 20% blockbusters
-    is_blockbuster_flags = [True] * 20 + [False] * 80
-    rng.shuffle(is_blockbuster_flags)
-
     for i in range(1, num_movies + 1):
         prefix = titles_prefix[(i - 1) % len(titles_prefix)]
         suffix = titles_suffix[((i - 1) * 3) % len(titles_suffix)]
         title = f"{prefix} {suffix} (Vol. {(i % 4) + 1})"
-        
-        # Release date spread over the period (some before start_date so day 1 has active movies)
-        offset_days = int(rng.uniform(-30, total_days - 14))
+
+        # Categorize movie tiers and extended lifecycles
+        if i <= 30:
+            # Blockbuster tier (22–30 weeks, major tentpole franchise)
+            is_blockbuster = True
+            run_weeks = int(rng.integers(22, 30))
+            base_demand = rng.uniform(0.70, 0.92)
+        elif i <= 80:
+            # Medium-performing titles (16–24 weeks)
+            is_blockbuster = False
+            run_weeks = int(rng.integers(16, 24))
+            base_demand = rng.uniform(0.40, 0.65)
+        else:
+            # Short-run / boutique titles (8–14 weeks)
+            is_blockbuster = False
+            run_weeks = int(rng.integers(8, 14))
+            base_demand = rng.uniform(0.28, 0.48)
+
+        # Release scheduling strategy across the timeline:
+        # Group A (Movies 1–35): Released early/mid Train (days -14 to 210).
+        # Group B (Movies 36–85, 50 movies): Released late Train (days 220 to 310). With 16-30 week runs, they span into Test (~60-70% warm)!
+        # Group C (Movies 86–100, 15 movies): Released in Val and Test (days 320 to 420). Pure debut cold-start titles (~30-40% cold)!
+        if i <= 35:
+            offset_days = int(rng.uniform(-14, 210))
+        elif i <= 85:
+            offset_days = int(rng.uniform(220, 310))
+        else:
+            offset_days = int(rng.uniform(320, 420))
+
         release_date = (start_dt + timedelta(days=offset_days)).strftime("%Y-%m-%d")
-        
         genre = rng.choice(GENRES)
-        is_blockbuster = is_blockbuster_flags[i - 1]
-        
-        base_demand = rng.uniform(0.65, 0.90) if is_blockbuster else rng.uniform(0.30, 0.60)
-        
+
         movies.append({
             "movie_id": f"MOV_{i:03d}",
             "movie_title": title,
@@ -144,7 +167,7 @@ def build_movie_catalog(num_movies: int = 100, start_date: str = "2024-01-01", e
             "release_date": release_date,
             "is_blockbuster": is_blockbuster,
             "base_demand_rate": round(base_demand, 3),
-            "run_weeks": int(rng.choice([4, 6, 8]) if is_blockbuster else rng.choice([2, 3, 4])),
+            "run_weeks": run_weeks,
         })
     return movies
 
@@ -167,9 +190,8 @@ def generate_full_dataset(
     print(f"Generating synthetic cinema catalog ({num_cinemas} cinemas)...")
     cinemas = build_cinema_catalog(num_cinemas, seed=seed)
     
-    print(f"Generating synthetic movie catalog ({num_movies} movies)...")
-    movies = build_movie_catalog(num_movies, start_date=start_date, end_date=end_date, seed=seed)
-    movies_by_id = {m["movie_id"]: m for m in movies}
+    print(f"Generating synthetic movie catalog ({num_movies} movies with extended lifecycles)...")
+    movies = build_movie_catalog(num_movies, start_date=start_date, seed=seed)
     
     simulator = BookingSimulator(BookingSimulationConfig(random_seed=seed))
     
@@ -209,22 +231,19 @@ def generate_full_dataset(
             active_movies = [(m, 14) for m in movies[:10]]
             
         # Select cinemas scheduled for this day
-        # To get ~55 shows/day: sample ~15-20 cinema-screen-slot combinations
         daily_cinemas = rng.choice(cinemas, size=min(18, len(cinemas)), replace=False)
         
         for cin in daily_cinemas:
-            # Pick 1-3 screens in this cinema today
             selected_screens = rng.choice(cin["screens"], size=min(len(cin["screens"]), rng.choice([2, 3])), replace=False)
             
             for scr in selected_screens:
-                # Pick 1-2 slots
                 selected_slots = rng.choice(SHOW_SLOTS, size=rng.choice([1, 2]), replace=False)
                 
                 for slot_info in selected_slots:
                     show_counter += 1
                     show_id = f"SHOW_{show_counter:05d}"
                     
-                    # Choose a movie for this screen/slot
+                    # Choose an active movie for this screen/slot
                     chosen_movie, age_days = active_movies[rng.integers(0, len(active_movies))]
                     
                     show_time_str = slot_info["time"]
@@ -232,9 +251,7 @@ def generate_full_dataset(
                     
                     # Compute demand expectation
                     genre_bias = GENRE_DEMAND_BIAS.get(chosen_movie["genre"], 1.0)
-                    
-                    # Exponential decay over release age (weeks)
-                    age_decay = np.exp(-0.045 * (age_days / 7.0))
+                    age_decay = np.exp(-0.038 * (age_days / 7.0))
                     
                     expected_ratio = (
                         chosen_movie["base_demand_rate"]
@@ -259,11 +276,7 @@ def generate_full_dataset(
                         is_blockbuster=chosen_movie["is_blockbuster"],
                     )
                     
-                    # We store events only for a subset of shows if needed to save memory,
-                    # but storing all events gives full auditability!
-                    # For performance, append events
                     all_booking_events.extend(events)
-                    
                     occupancy = round(metrics["actual_tickets_sold"] / scr["capacity"], 4)
                     
                     show_record = {
@@ -327,6 +340,57 @@ def generate_full_dataset(
     print(f"Saving booking events to {events_parquet_path}...")
     df_events.to_parquet(events_parquet_path, index=False)
     
+    # Compute split overlap metrics (70% Train, 15% Val, 15% Test)
+    n = len(df_shows)
+    train_idx = int(n * 0.70)
+    val_idx = int(n * 0.85)
+
+    df_train = df_shows.iloc[:train_idx]
+    df_val = df_shows.iloc[train_idx:val_idx]
+    df_test = df_shows.iloc[val_idx:]
+
+    train_movies = set(df_train["movie_id"].unique())
+    val_movies = set(df_val["movie_id"].unique())
+    test_movies = set(df_test["movie_id"].unique())
+
+    overlap_movies = train_movies.intersection(test_movies)
+    cold_movies = test_movies - train_movies
+
+    test_warm_shows = df_test["movie_id"].isin(train_movies).sum()
+    test_cold_shows = df_test["movie_id"].isin(cold_movies).sum()
+    warm_pct = round(float(test_warm_shows / len(df_test) * 100.0), 2)
+    cold_pct = round(float(test_cold_shows / len(df_test) * 100.0), 2)
+
+    print("\n" + "=" * 60)
+    print("CHRONOLOGICAL SPLIT & MOVIE OVERLAP AUDIT")
+    print("=" * 60)
+    print(f"Training movies count:   {len(train_movies)}")
+    print(f"Validation movies count: {len(val_movies)}")
+    print(f"Test movies count:       {len(test_movies)}")
+    print(f"Train/Test movie overlap: {len(overlap_movies)} movies")
+    print(f"Warm-start test shows:   {test_warm_shows} ({warm_pct}%)")
+    print(f"Cold-start test shows:   {test_cold_shows} ({cold_pct}%)")
+    print("=" * 60)
+
+    # Assert that both evaluation groups are nonempty
+    assert test_warm_shows > 0, "Warm-start test shows must be non-empty!"
+    assert test_cold_shows > 0, "Cold-start test shows must be non-empty!"
+    assert 50.0 <= warm_pct <= 75.0, f"Warm-start percentage ({warm_pct}%) outside expected target [50%, 75%]"
+
+    overlap_stats = {
+        "training_movie_count": len(train_movies),
+        "validation_movie_count": len(val_movies),
+        "test_movie_count": len(test_movies),
+        "train_test_movie_overlap_count": len(overlap_movies),
+        "warm_start_test_show_count": int(test_warm_shows),
+        "cold_start_test_show_count": int(test_cold_shows),
+        "warm_start_percentage": warm_pct,
+        "cold_start_percentage": cold_pct,
+    }
+
+    with open(os.path.join(output_dir, "split_movie_overlap.json"), "w") as f:
+        json.dump(overlap_stats, f, indent=2)
+
     # Save simulation summary
     meta = {
         "dataset_name": "CinemaOps_Simulated_Benchmark",
@@ -342,14 +406,14 @@ def generate_full_dataset(
         "mean_capacity": float(df_shows["screen_capacity"].mean()),
         "mean_advance_t48": float(df_shows["advance_bookings_t48"].mean()),
         "mean_actual_sold": float(df_shows["actual_tickets_sold"].mean()),
+        "overlap_audit": overlap_stats,
     }
     with open(os.path.join(output_dir, "simulation_meta.json"), "w") as f:
         json.dump(meta, f, indent=2)
         
-    print("Dataset generation complete!")
+    print("Dataset generation & overlap verification complete!")
     return df_shows, df_events
 
 
 if __name__ == "__main__":
     generate_full_dataset()
-

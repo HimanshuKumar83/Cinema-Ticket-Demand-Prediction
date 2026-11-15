@@ -112,26 +112,27 @@ $$\text{Observation Timestamp} \le \text{Cutoff Timestamp}$$
 ---
 
 ## 3. Modeling Portfolio & Benchmark Results
-Evaluated on **4,500 held-out chronological test shows** (2025-01-12 to 2025-03-19):
+Evaluated on **4,500 held-out chronological test shows** (2025-01-13 to 2025-03-20):
 
-| Model Architecture | MAE (Tickets) | RMSE | WAPE (%) | Occupancy MAE | Capacity Violation Rate |
+| Model Architecture | MAE (Tickets) | RMSE | WAPE (%) | Occupancy MAE | Asymmetric Cost (1.5x) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Random Forest Regressor** | **12.66** | **17.29** | **8.68%** | **0.0558** | 2.73% |
-| **LightGBM Regressor (L1)** | **13.53** | **18.40** | **9.28%** | **0.0594** | 6.47% |
-| **XGBoost Regressor** | **14.21** | **19.23** | **9.74%** | **0.0621** | 4.22% |
-| **Ridge Regression** | 17.47 | 22.36 | 11.98% | 0.0802 | 6.33% |
-| **Hierarchical Baseline** | 45.98 | 59.68 | 31.53% | 0.1815 | 0.00% |
+| **LightGBM Regressor (L1)** ★ | **11.27** | **15.09** | **11.22%** | **0.0481** | **12.86** |
+| **Random Forest Regressor** | **12.15** | **16.04** | **12.10%** | **0.0519** | 13.80 |
+| **XGBoost Regressor** | **12.19** | **16.30** | **12.14%** | **0.0520** | 13.30 |
+| **Ridge Regression** | 16.68 | 20.49 | 16.61% | 0.0821 | 18.01 |
+| **Hierarchical Baseline** | 59.12 | 76.40 | 58.86% | 0.2295 | 60.98 |
 
-*LightGBM Regressor and Random Forest demonstrate superior performance with over 70% error reduction relative to the domain baseline.*
+*LightGBM Regressor demonstrates superior performance with an 80.9% error reduction relative to the hierarchical domain baseline.*
 
 ---
 
 ## 4. Operational Uncertainty & Calibration
-Uncertainty intervals are calibrated via **Conformal Prediction Residual Quantiles** evaluated on held-out validation data:
-- Residual $10^{\text{th}}$ Percentile ($q_{10}$): $-28.84$ tickets
-- Residual $90^{\text{th}}$ Percentile ($q_{90}$): $+11.25$ tickets
-- **Empirical Held-Out Test Coverage:** **79.09%** (closely matching the theoretical 80.0% confidence level).
-- Prediction Interval: $[\max(0, \hat{y} + q_{10}), \min(\text{Capacity}, \hat{y} + q_{90})]$.
+Uncertainty intervals are calibrated via **Capacity-Normalized Conformal Prediction** evaluated on held-out validation data:
+- Normalized Quantiles: $q_{10,\text{norm}} = -0.0763$, $q_{90,\text{norm}} = +0.0572$
+- **Empirical Held-Out Test Coverage:** **76.64%** (Warm-Start: 83.88%, Cold-Start: 67.69%).
+- Subgroup Interval Widths: 16.0 tickets on $\le 150$-seat rooms, 28.5 tickets on $151-300$-seat rooms, 50.7 tickets on $>300$-seat rooms.
+- Prediction Interval: $[\max(0, \hat{y} + q_{10,\text{norm}} \cdot \text{Capacity}), \min(\text{Capacity}, \hat{y} + q_{90,\text{norm}} \cdot \text{Capacity})]$.
+- Reliability Curve: `reports/calibration_curve.png`.
 
 ---
 
@@ -139,11 +140,12 @@ Uncertainty intervals are calibrated via **Conformal Prediction Residual Quantil
 The application translates raw attendance forecasts into concrete, operational managerial actions:
 1. **Screen Allocation:**
    - **Upgrade Trigger:** Projected Occupancy $\ge 85\%$ or Upper Bound $\ge \text{Capacity}$ $\to$ Recommend upgrade to 350+ seat auditorium to avoid demand truncation.
-   - **Downgrade Trigger:** Projected Occupancy $\le 35\%$ and Capacity $> 200$ $\to$ Recommend shifting to compact room (80–150 seats) to optimize HVAC and cleaning costs.
+   - **Downgrade Trigger:** Projected Occupancy $\le 35\%$ and Capacity $> 180$ $\to$ Recommend shifting to compact room (80–150 seats) to optimize HVAC and cleaning costs.
    - **Maintain Status:** Projected Occupancy between $35\%$ and $85\%$ $\to$ Optimal room sizing.
-2. **Staffing Formulas:**
+2. **Staffing Formulas (Centralized in `src/operational/advisory.py`):**
    - **Box Office / Ticket Scanners:** $\max(1, \lceil \frac{\text{Upper Bound}}{150} \rceil)$
    - **Concession Cashiers:** $\max(1, \lceil \frac{\text{Upper Bound}}{70} \rceil)$
    - **Floor Ushers:** $\max(1, \lceil \frac{\text{Upper Bound}}{120} \rceil)$
-   - **Concession Units (Popcorn/Beverage):** $\text{Predicted Tickets} \times 0.70$
+   - **Cleaning Crew:** $\max(1, \lceil \frac{\text{Capacity}}{100} \rceil)$
+   - **Concession Units (Popcorn/Beverage):** $\text{round}(\text{Predicted Tickets} \times 0.70)$
 

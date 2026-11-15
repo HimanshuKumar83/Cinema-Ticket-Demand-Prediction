@@ -13,6 +13,7 @@ import pandas as pd
 
 from src.features.build_features import compute_features, HistoryPriors
 from src.explainability.shap_analysis import CinemaExplainer
+from src.operational.advisory import calculate_staffing_and_screen_advisory
 
 
 ARTIFACTS_DIR = Path("artifacts")
@@ -44,6 +45,17 @@ class ForecastResult:
     negative_drivers: List[Dict[str, Any]]
     operational_advisory: Dict[str, Any]
     limitation_note: str
+    capacity: Optional[float] = None
+    lower_bound: Optional[float] = None
+    upper_bound: Optional[float] = None
+
+    def __post_init__(self):
+        if self.capacity is None:
+            self.capacity = self.screen_capacity
+        if self.lower_bound is None:
+            self.lower_bound = self.interval_80_lower
+        if self.upper_bound is None:
+            self.upper_bound = self.interval_80_upper
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -62,6 +74,9 @@ class CinemaPredictor:
         self.feature_cols = self.bundle["feature_cols"]
         self.q10 = float(self.bundle.get("residual_q10", -25.0))
         self.q90 = float(self.bundle.get("residual_q90", 12.0))
+        self.q10_norm = float(self.bundle.get("residual_q10_norm", -0.115))
+        self.q90_norm = float(self.bundle.get("residual_q90_norm", 0.055))
+        self.use_normalized_conformal = "residual_q10_norm" in self.bundle
         self.priors = HistoryPriors(self.bundle.get("priors", {}))
         
         # Initialize SHAP explainer
@@ -154,9 +169,13 @@ class CinemaPredictor:
         pred_tickets = float(np.clip(raw_pred, 0.0, cap))
         pred_occupancy = float(round(pred_tickets / max(1.0, cap), 4))
 
-        # 80% Conformal Prediction Intervals
-        lower = float(np.clip(round(pred_tickets + self.q10, 1), 0.0, cap))
-        upper = float(np.clip(round(pred_tickets + self.q90, 1), 0.0, cap))
+        # 80% Conformal Prediction Intervals (Capacity-Aware Normalized Calibration)
+        if self.use_normalized_conformal:
+            lower = float(np.clip(round(pred_tickets + self.q10_norm * cap, 1), 0.0, cap))
+            upper = float(np.clip(round(pred_tickets + self.q90_norm * cap, 1), 0.0, cap))
+        else:
+            lower = float(np.clip(round(pred_tickets + self.q10, 1), 0.0, cap))
+            upper = float(np.clip(round(pred_tickets + self.q90, 1), 0.0, cap))
 
         # Cold start diagnosis
         is_new_movie = bool(feats["is_new_movie"].iloc[0] == 1)
@@ -182,8 +201,14 @@ class CinemaPredictor:
             except Exception as e:
                 print(f"SHAP explanation error: {e}")
 
-        # Operational Capacity and Staffing Advisory
-        advisory = self._generate_operational_advisory(pred_tickets, pred_occupancy, cap)
+        # Centralized Operational Capacity and Staffing Advisory
+        advisory_obj = calculate_staffing_and_screen_advisory(
+            predicted_tickets=pred_tickets,
+            predicted_occupancy=pred_occupancy,
+            screen_capacity=cap,
+            interval_80_upper=upper,
+        )
+        advisory_dict = advisory_obj.to_dict()
 
         limitation = (
             "Decision-support system only: All operational screen adjustments and staffing rosters "
@@ -194,62 +219,38 @@ class CinemaPredictor:
             predicted_tickets=round(pred_tickets, 1),
             predicted_occupancy=pred_occupancy,
             screen_capacity=cap,
+            capacity=cap,
             interval_80_lower=lower,
+            lower_bound=lower,
             interval_80_upper=upper,
+            upper_bound=upper,
             is_cold_start=is_cold,
             cold_start_warning=cold_msg,
             positive_drivers=pos_drivers,
             negative_drivers=neg_drivers,
-            operational_advisory=asdict(advisory),
+            operational_advisory=advisory_dict,
             limitation_note=limitation,
         )
 
     def _generate_operational_advisory(
-        self, predicted_tickets: float, occupancy: float, capacity: float
+        self, predicted_tickets: float, occupancy: float, capacity: float, interval_80_upper: Optional[float] = None
     ) -> OperationalRecommendation:
-        """Rule-based decision support logic for screen allocation and staffing."""
-        # Screen Capacity Allocation
-        if occupancy >= 0.85:
-            screen_decision = "UPGRADE_SCREEN"
-            action = f"High sell-out risk (Occupancy {occupancy*100:.1f}%). Reallocate to a larger auditorium screen (350+ seats) immediately."
-            suggested_cap = "Large (300 - 450 seats)"
-        elif occupancy < 0.35:
-            screen_decision = "DOWNGRADE_SCREEN"
-            action = f"Auditorium under-utilized ({occupancy*100:.1f}% occupancy). Shift to a compact theater room (80-150 seats) to minimize HVAC & operational costs."
-            suggested_cap = "Small (80 - 150 seats)"
-        else:
-            screen_decision = "MAINTAIN_CURRENT"
-            action = f"Balanced demand ({occupancy*100:.1f}% occupancy). Maintain currently scheduled screening room."
-            suggested_cap = "Current auditorium capacity is optimal."
-
-        # Staffing Allocation
-        if predicted_tickets > 250:
-            box_office = 4
-            ushers = 3
-            cleaning = 3
-        elif predicted_tickets > 140:
-            box_office = 3
-            ushers = 2
-            cleaning = 2
-        elif predicted_tickets > 70:
-            box_office = 2
-            ushers = 1
-            cleaning = 2
-        else:
-            box_office = 1
-            ushers = 1
-            cleaning = 1
-
-        concession_units = int(predicted_tickets * 0.70)
-
+        """Rule-based decision support logic for screen allocation and staffing (delegates to centralized engine)."""
+        upper = interval_80_upper if interval_80_upper is not None else min(capacity, predicted_tickets + 15.0)
+        adv = calculate_staffing_and_screen_advisory(
+            predicted_tickets=predicted_tickets,
+            predicted_occupancy=occupancy,
+            screen_capacity=capacity,
+            interval_80_upper=upper,
+        )
         return OperationalRecommendation(
-            screen_decision=screen_decision,
-            recommended_action=action,
-            suggested_capacity_range=suggested_cap,
-            box_office_staff=box_office,
-            ushers_count=ushers,
-            cleaning_crew=cleaning,
-            concession_inventory_units=concession_units,
+            screen_decision=adv.screen_decision,
+            recommended_action=adv.recommended_action,
+            suggested_capacity_range=adv.suggested_capacity_range,
+            box_office_staff=adv.box_office_staff,
+            ushers_count=adv.ushers_count,
+            cleaning_crew=adv.cleaning_crew,
+            concession_inventory_units=adv.concession_inventory_units,
             managerial_review_required=True,
         )
 

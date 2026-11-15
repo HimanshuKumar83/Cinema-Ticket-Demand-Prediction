@@ -211,3 +211,79 @@ def test_api_valid_batch_and_invalid_requests():
     invalid_cap = {**valid_payload, "screen_capacity": -50.0}
     res_inv = client.post("/predict", json=invalid_cap)
     assert res_inv.status_code == 422, "Negative capacity should be rejected with 422"
+
+
+def test_capacity_and_bound_aliases(predictor_instance):
+    """TEST 9: Capacity and interval aliases (capacity/lower_bound/upper_bound) must be populated and equal."""
+    client = TestClient(app)
+    payload = {
+        "cinema_id": "CIN_01",
+        "movie_id": "MOV_001",
+        "screen_capacity": 250.0,
+        "show_slot": "Evening",
+        "advance_bookings_t48": 80.0,
+        "booking_velocity_24h": 30.0,
+    }
+    
+    # Python predictor check
+    res_obj = predictor_instance.predict_single(**payload)
+    assert res_obj.capacity == res_obj.screen_capacity == 250.0
+    assert res_obj.lower_bound == res_obj.interval_80_lower
+    assert res_obj.upper_bound == res_obj.interval_80_upper
+
+    # FastAPI response check
+    res_api = client.post("/predict", json=payload)
+    assert res_api.status_code == 200
+    data = res_api.json()
+    assert data["capacity"] == data["screen_capacity"] == 250.0
+    assert data["lower_bound"] == data["interval_80_lower"]
+    assert data["upper_bound"] == data["interval_80_upper"]
+
+
+def test_warm_and_cold_start_evaluation_non_empty():
+    """TEST 10: Both warm-start and cold-start test sets must be non-empty with distinct metrics."""
+    metrics_path = Path("artifacts/metrics.json")
+    assert metrics_path.exists(), "artifacts/metrics.json must exist"
+    
+    with open(metrics_path, "r") as f:
+        metrics = json.load(f)
+    
+    cold_start_slices = metrics["operational_slices"]["cold_start"]
+    assert "Warm-Start Shows (Movie in Train)" in cold_start_slices
+    assert "Cold-Start Shows (New Movie)" in cold_start_slices
+
+    warm = cold_start_slices["Warm-Start Shows (Movie in Train)"]
+    cold = cold_start_slices["Cold-Start Shows (New Movie)"]
+
+    assert warm["N_samples"] > 0, "Warm-start test shows must be non-empty"
+    assert cold["N_samples"] > 0, "Cold-start test shows must be non-empty"
+    assert warm["N_samples"] + cold["N_samples"] == 4500, "Total test shows must equal 4,500"
+    assert warm["MAE"] > 0
+    assert cold["MAE"] > 0
+
+
+def test_centralized_staffing_advisory_structure(predictor_instance):
+    """TEST 11: Verify operational advisory includes full front-of-house breakdown and disclaimer."""
+    res = predictor_instance.predict_single(
+        cinema_id="CIN_01",
+        movie_id="MOV_001",
+        screen_capacity=300,
+        advance_bookings_t48=120,
+    )
+    adv = res.operational_advisory
+    required_keys = [
+        "screen_decision", "recommended_action", "suggested_capacity_range",
+        "box_office_staff", "concession_cashiers", "ushers_count", "cleaning_crew",
+        "total_floor_staff", "concession_inventory_units", "operational_disclaimer"
+    ]
+    for key in required_keys:
+        assert key in adv, f"Required key '{key}' missing from operational advisory!"
+    assert adv["box_office_staff"] >= 1
+    assert adv["concession_cashiers"] >= 1
+    assert adv["ushers_count"] >= 1
+    assert adv["cleaning_crew"] >= 1
+    assert adv["total_floor_staff"] == (
+        adv["box_office_staff"] + adv["concession_cashiers"] + adv["ushers_count"] + adv["cleaning_crew"]
+    )
+    assert "Rule-based operational decision support only" in adv["operational_disclaimer"]
+

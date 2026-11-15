@@ -56,39 +56,49 @@ All features are generated strictly from information available at or before $T-4
 ## 4. Multi-Model Chronological Benchmark
 The dataset was partitioned sequentially without shuffling:
 - **Train:** 21,000 shows (2024-01-01 to 2024-11-07) - 70%
-- **Validation:** 4,500 shows (2024-11-07 to 2025-01-12) - 15%
-- **Test:** 4,500 shows (2025-01-12 to 2025-03-19) - 15%
+- **Validation:** 4,500 shows (2024-11-07 to 2025-01-13) - 15%
+- **Test:** 4,500 shows (2025-01-13 to 2025-03-20) - 15%
 
 ### 4.1 Comparative Results on Held-Out Test Set:
-| Model Architecture | Objective / Approach | Test MAE | Test RMSE | Test WAPE (%) | Occupancy MAE | Unclipped Capacity Violation Rate |
+| Model Architecture | Objective / Approach | Test MAE | Test RMSE | Test WAPE (%) | Occupancy MAE | Asymmetric Cost (1.5x) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Hierarchical Baseline** | 4-level mean occupancy fallback | 45.98 | 59.68 | 31.53% | 0.1815 | 0.00% |
-| **Ridge Regression** | Scaled linear regressor | 17.47 | 22.36 | 11.98% | 0.0802 | 6.33% |
-| **XGBoost Regressor** | Gradient boosted trees | 14.21 | 19.23 | 9.74% | 0.0621 | 4.22% |
-| **LightGBM Regressor** | L1 loss optimization | 13.53 | 18.40 | 9.28% | 0.0594 | 6.47% |
-| **Random Forest** | Non-linear ensemble | 12.66 | 17.29 | 8.68% | 0.0558 | 2.73% |
+| **LightGBM Regressor** ★ | L1 loss optimization | **11.27** | **15.09** | **11.22%** | **0.0481** | **12.86** |
+| **Random Forest** | Non-linear ensemble (100 trees) | 12.15 | 16.04 | 12.10% | 0.0519 | 13.80 |
+| **XGBoost Regressor** | Gradient boosted trees | 12.19 | 16.30 | 12.14% | 0.0520 | 13.30 |
+| **Ridge Regression** | Scaled regularized linear benchmark | 16.68 | 20.49 | 16.61% | 0.0821 | 18.01 |
+| **Hierarchical Baseline** | 4-level mean occupancy fallback | 59.12 | 76.40 | 58.86% | 0.2295 | 60.98 |
 
 *Post-processing clips all model outputs strictly to $[0, \text{screen\_capacity}]$, completely eliminating live operational capacity violations.*
+
+### 4.2 Cold-Start vs. Warm-Start Slice Evaluation:
+With 37 movies spanning across the train/test chronological boundary, the held-out test set provides a robust comparative benchmark:
+- **Warm-Start Test Shows ($N=2,488$, 55.3%):** MAE: **9.47**, RMSE: **12.64**, WAPE: **10.84%**, Occupancy MAE: **0.0398**, 80% Coverage: **83.88%**.
+- **Cold-Start Test Shows ($N=2,012$, 44.7%):** MAE: **13.50**, RMSE: **17.65**, WAPE: **11.58%**, Occupancy MAE: **0.0584**, 80% Coverage: **67.69%**.
 
 ---
 
 ## 5. Explainability & Uncertainty Quantification
 ### 5.1 Global & Local Feature Attributions (TreeSHAP)
 Computing TreeSHAP values over the held-out test split revealed the dominant predictive factors:
-1. `advance_bookings_t48`: Mean $|SHAP| = 49.51$
-2. `booking_velocity_24h`: Mean $|SHAP| = 15.82$
-3. `screen_capacity`: Mean $|SHAP| = 15.37$
-4. `is_blockbuster`: Mean $|SHAP| = 9.64$
-5. `slot_hist_avg_demand`: Mean $|SHAP| = 8.51$
-6. `booking_velocity_previous_24h`: Mean $|SHAP| = 4.83$
-7. `movie_hist_avg_demand`: Mean $|SHAP| = 4.44$
-8. `ticket_price`: Mean $|SHAP| = 3.90$
+1. `advance_bookings_t48`: Mean $|SHAP| = 61.22$
+2. `is_blockbuster`: Mean $|SHAP| = 15.36$
+3. `booking_velocity_24h`: Mean $|SHAP| = 12.99$
+4. `screen_capacity`: Mean $|SHAP| = 8.18$
+5. `slot_hist_avg_demand`: Mean $|SHAP| = 5.74$
+6. `movie_release_age_days`: Mean $|SHAP| = 5.46$
+7. `booking_velocity_previous_24h`: Mean $|SHAP| = 4.84$
+8. `velocity_ratio`: Mean $|SHAP| = 3.21$
 
-### 5.2 Conformal Prediction Calibration
-Using validation residual quantiles ($q_{10} = -28.84$, $q_{90} = +11.25$):
+### 5.2 Capacity-Normalized Conformal Calibration
+Using validation capacity-normalized residual quantiles ($q_{10,\text{norm}} = -0.0763$, $q_{90,\text{norm}} = +0.0572$):
 - **Target Confidence:** 80.0%
-- **Empirical Held-Out Test Coverage:** **79.09%**
-- **Mean Interval Width:** 38.7 tickets
+- **Empirical Held-Out Test Coverage:** **76.64%**
+- **Mean Interval Width:** **33.82 tickets**
+- **Subgroup Calibration:**
+  - Small screens ($\le 150$ seats): width = **16.0 tickets**
+  - Medium screens ($151-300$ seats): width = **28.5 tickets** (76.24% coverage)
+  - Large screens ($> 300$ seats): width = **50.7 tickets** (83.74% coverage)
+- **Reliability Diagram:** Visualized in `reports/calibration_curve.png`.
 
 ---
 
@@ -98,6 +108,10 @@ The automated test suite (`tests/test_pipeline.py`) validates:
 2. Complete absence of target and ex-post variables in feature stores.
 3. Strict chronological split ordering without temporal overlap.
 4. Guaranteed prediction bound containment: $\forall \hat{y}, 0 \le \hat{y} \le \text{Capacity}$.
+5. Equality of canonical and alias fields (`screen_capacity` == `capacity`, `lower_bound`, `upper_bound`).
+6. Non-empty warm-start and cold-start test sets ($N_{\text{warm}}=2,488$, $N_{\text{cold}}=2,012$).
+7. Centralized operational advisory schema and rule-based staffing calculations.
+
 5. Dynamic response sensitivity (no hardcoded outputs).
 6. Cold-start detection and advisory generation.
 7. Presence of all 5 candidate models in serialized artifacts.

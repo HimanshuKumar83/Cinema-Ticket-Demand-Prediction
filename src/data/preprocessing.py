@@ -1,7 +1,7 @@
 """
 CinemaOps AI - Preprocessing and Split Pipeline
 Validates schemas, enforces capacity bounds, ensures data integrity,
-and generates leak-free chronological train/validation/test splits.
+and generates leak-free chronological train/validation/test splits with explicit warm vs. cold-start tracking.
 """
 
 import os
@@ -102,7 +102,8 @@ def create_chronological_splits(
     - 15% Validation (middle)
     - 15% Test (most recent)
     
-    Guarantees strict temporal separation with ZERO lookahead leakage.
+    Guarantees strict temporal separation with ZERO lookahead leakage,
+    while tagging warm-start vs. cold-start shows on the held-out test set.
     """
     os.makedirs(output_dir, exist_ok=True)
     
@@ -125,6 +126,21 @@ def create_chronological_splits(
     
     assert train_end <= val_start, f"Leakage: Train end {train_end} > Val start {val_start}"
     assert val_end <= test_start, f"Leakage: Val end {val_end} > Test start {test_start}"
+
+    # Track warm vs cold start on test partition
+    train_movies = set(df_train["movie_id"].unique())
+    test_movies = set(df_test["movie_id"].unique())
+    overlap_movies = train_movies.intersection(test_movies)
+
+    df_test["is_cold_start_show"] = (~df_test["movie_id"].isin(train_movies)).astype(int)
+    warm_count = int((df_test["is_cold_start_show"] == 0).sum())
+    cold_count = int((df_test["is_cold_start_show"] == 1).sum())
+    warm_pct = round(float(warm_count / len(df_test) * 100.0), 2)
+    cold_pct = round(float(cold_count / len(df_test) * 100.0), 2)
+
+    # Assert non-empty warm and cold groups
+    assert warm_count > 0, "Warm-start test partition must be non-empty!"
+    assert cold_count > 0, "Cold-start test partition must be non-empty!"
     
     # Save parquet splits
     train_path = os.path.join(output_dir, "train.parquet")
@@ -142,6 +158,7 @@ def create_chronological_splits(
             "end_date": str(df_train["show_date"].max()),
             "mean_tickets_sold": float(df_train["actual_tickets_sold"].mean()),
             "mean_occupancy": float(df_train["occupancy_rate"].mean()),
+            "unique_movies": len(train_movies),
         },
         "val": {
             "count": len(df_val),
@@ -149,6 +166,7 @@ def create_chronological_splits(
             "end_date": str(df_val["show_date"].max()),
             "mean_tickets_sold": float(df_val["actual_tickets_sold"].mean()),
             "mean_occupancy": float(df_val["occupancy_rate"].mean()),
+            "unique_movies": int(df_val["movie_id"].nunique()),
         },
         "test": {
             "count": len(df_test),
@@ -156,6 +174,12 @@ def create_chronological_splits(
             "end_date": str(df_test["show_date"].max()),
             "mean_tickets_sold": float(df_test["actual_tickets_sold"].mean()),
             "mean_occupancy": float(df_test["occupancy_rate"].mean()),
+            "unique_movies": len(test_movies),
+            "movie_overlap_with_train": len(overlap_movies),
+            "warm_start_shows": warm_count,
+            "cold_start_shows": cold_count,
+            "warm_start_pct": warm_pct,
+            "cold_start_pct": cold_pct,
         },
         "chronological_integrity": True,
     }
@@ -164,6 +188,7 @@ def create_chronological_splits(
         json.dump(split_info, f, indent=2)
         
     print(f"Chronological split complete: {len(df_train)} train, {len(df_val)} val, {len(df_test)} test.")
+    print(f"Test Split Composition: {warm_count} warm-start ({warm_pct}%), {cold_count} cold-start ({cold_pct}%), {len(overlap_movies)} overlapping movies.")
     return df_train, df_val, df_test, split_info
 
 
