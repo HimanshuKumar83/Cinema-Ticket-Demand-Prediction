@@ -1,0 +1,57 @@
+[
+  {
+    "Model": "Random Forest",
+    "MAE": 12.664,
+    "RMSE": 17.294,
+    "WAPE_pct": 8.68,
+    "Occupancy_MAE": 0.0558,
+    "Asymmetric_Cost": 14.828,
+    "Clipped_Capacity_Pct": 2.73,
+    "N_samples": 4500,
+    "Violation_Rate_Pct": 2.7333333333333334
+  },
+  {
+    "Model": "LightGBM",
+    "MAE": 13.53,
+    "RMSE": 18.404,
+    "WAPE_pct": 9.28,
+    "Occupancy_MAE": 0.0594,
+    "Asymmetric_Cost": 15.391,
+    "Clipped_Capacity_Pct": 6.47,
+    "N_samples": 4500,
+    "Violation_Rate_Pct": 6.466666666666667
+  },
+  {
+    "Model": "XGBoost",
+    "MAE": 14.205,
+    "RMSE": 19.235,
+    "WAPE_pct": 9.74,
+    "Occupancy_MAE": 0.0621,
+    "Asymmetric_Cost": 16.366,
+    "Clipped_Capacity_Pct": 4.22,
+    "N_samples": 4500,
+    "Violation_Rate_Pct": 4.222222222222222
+  },
+  {
+    "Model": "Ridge Regression",
+    "MAE": 17.471,
+    "RMSE": 22.361,
+    "WAPE_pct": 11.98,
+    "Occupancy_MAE": 0.0802,
+    "Asymmetric_Cost": 20.766,
+    "Clipped_Capacity_Pct": 6.33,
+    "N_samples": 4500,
+    "Violation_Rate_Pct": 6.333333333333334
+  },
+  {
+    "Model": "Hierarchical Baseline",
+    "MAE": 45.982,
+    "RMSE": 59.676,
+    "WAPE_pct": 31.53,
+    "Occupancy_MAE": 0.1815,
+    "Asymmetric_Cost": 53.426,
+    "Clipped_Capacity_Pct": 0.0,
+    "N_samples": 4500,
+    "Violation_Rate_Pct": 0.0
+  }
+]

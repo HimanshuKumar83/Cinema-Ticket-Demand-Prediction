@@ -1,0 +1,102 @@
+[
+  {
+    "feature": "advance_bookings_t48",
+    "importance": 49.507
+  },
+  {
+    "feature": "booking_velocity_24h",
+    "importance": 15.8236
+  },
+  {
+    "feature": "screen_capacity",
+    "importance": 15.374
+  },
+  {
+    "feature": "is_blockbuster",
+    "importance": 9.6448
+  },
+  {
+    "feature": "slot_hist_avg_demand",
+    "importance": 8.5089
+  },
+  {
+    "feature": "booking_velocity_previous_24h",
+    "importance": 4.8314
+  },
+  {
+    "feature": "movie_hist_avg_demand",
+    "importance": 4.4449
+  },
+  {
+    "feature": "ticket_price",
+    "importance": 3.8978
+  },
+  {
+    "feature": "advance_occupancy_t48",
+    "importance": 2.9131
+  },
+  {
+    "feature": "velocity_ratio",
+    "importance": 2.2941
+  },
+  {
+    "feature": "movie_release_age_days",
+    "importance": 1.2573
+  },
+  {
+    "feature": "is_tier_1",
+    "importance": 1.0527
+  },
+  {
+    "feature": "is_weekend",
+    "importance": 0.8193
+  },
+  {
+    "feature": "slot_morning",
+    "importance": 0.701
+  },
+  {
+    "feature": "cinema_hist_avg_demand",
+    "importance": 0.5239
+  },
+  {
+    "feature": "genre_hist_avg_demand",
+    "importance": 0.3729
+  },
+  {
+    "feature": "slot_evening",
+    "importance": 0.3291
+  },
+  {
+    "feature": "booking_acceleration",
+    "importance": 0.2133
+  },
+  {
+    "feature": "weekday_hist_avg_demand",
+    "importance": 0.1951
+  },
+  {
+    "feature": "is_holiday",
+    "importance": 0.1886
+  },
+  {
+    "feature": "slot_matinee",
+    "importance": 0.082
+  },
+  {
+    "feature": "slot_night",
+    "importance": 0.0279
+  },
+  {
+    "feature": "is_new_movie",
+    "importance": 0.0
+  },
+  {
+    "feature": "is_new_cinema",
+    "importance": 0.0
+  },
+  {
+    "feature": "is_low_history",
+    "importance": 0.0
+  }
+]

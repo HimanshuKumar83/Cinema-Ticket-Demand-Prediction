@@ -1,0 +1,7 @@
+{
+  "target_coverage_pct": 80.0,
+  "residual_q10": -28.838,
+  "residual_q90": 11.246,
+  "empirical_test_coverage_pct": 79.09,
+  "mean_interval_width": 38.72
+}

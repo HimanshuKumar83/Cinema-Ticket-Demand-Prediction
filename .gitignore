@@ -3,8 +3,8 @@
 venv/
 ENV/
 
-# Data and large files
-data/
+# Data and large files (root only)
+/data/
 !data/raw/.gitkeep
 
 # Environment variables

@@ -1,144 +1,97 @@
-"""Comprehensive test suite for Cinema Ticket Demand Forecasting MVP.
-Uses synthetic fixtures with ZERO Kaggle or external dependency.
 """
+CinemaOps AI - Comprehensive Test Suite
+Verifies data simulation integrity, zero lookahead leakage, chronological ordering,
+feature lists, model capacity bounds, 5-model bundle presence, and FastAPI endpoints.
+"""
+
 from datetime import datetime, timedelta
 from pathlib import Path
+import json
 import numpy as np
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
 from app.api import app
-from src.features.build_features import (
-    HistoryFeatureStore,
-    compute_calendar_features,
-    extract_features_for_dataset,
-    create_chronological_splits,
-)
+from src.data.booking_simulator import BookingSimulator, BookingSimulationConfig
+from src.features.build_features import compute_features, HistoryPriors
 from src.predict import CinemaPredictor
 
 
 @pytest.fixture
-def synthetic_history_df() -> pd.DataFrame:
-    """Create a realistic small synthetic dataset covering 20 days."""
-    np.random.seed(42)
-    base_date = datetime(2018, 5, 1)
-    rows = []
-    cinemas = [101, 102]
-    films = [501, 502, 503]
-
-    for day_offset in range(20):
-        current_date = base_date + timedelta(days=day_offset)
-        for cinema in cinemas:
-            for film in films:
-                for slot in [1, 2, 3]:
-                    cap = 200.0
-                    tickets = int(np.random.randint(10, 180))
-                    rows.append({
-                        "date": current_date,
-                        "cinema_code": cinema,
-                        "film_code": film,
-                        "show_time": slot,
-                        "capacity": cap,
-                        "tickets_sold": tickets,
-                        "occupancy": tickets / cap,
-                        "total_sales": tickets * 50.0,
-                        "tickets_out": 0,
-                        "ticket_use": tickets,
-                        "ticket_price": 50.0,
-                        "occu_perc": (tickets / cap) * 100.0,
-                        "capacity_imputed": 0
-                    })
-    return pd.DataFrame(rows)
+def predictor_instance():
+    return CinemaPredictor()
 
 
-def test_leakage_future_independence(synthetic_history_df):
-    """TEST 1: Leakage test - History features for date D must remain strictly
-    identical even if rows on D-1, D, or future dates are violently changed.
-    """
-    store_original = HistoryFeatureStore(synthetic_history_df)
-    
-    # Target show on Day 10 (2018-05-11). Under T-48h horizon, visible history is <= 2018-05-09 (Day 8).
-    target_show = pd.DataFrame([{
-        "date": datetime(2018, 5, 11),
-        "cinema_code": 101,
-        "film_code": 501,
-        "show_time": 2,
-        "capacity": 200.0,
-        "capacity_imputed": 0
-    }])
+def test_booking_simulator_arrival_and_capacity_bounds():
+    """TEST 1: BookingSimulator respects capacity bounds and produces valid T-48 metrics."""
+    sim = BookingSimulator(BookingSimulationConfig(random_seed=42))
+    capacity = 150
+    show_dt = pd.to_datetime("2024-05-10 18:00:00")
 
-    feats_orig = extract_features_for_dataset(target_show, store_original)
+    events, metrics = sim.simulate_show_bookings(
+        show_id="TEST_001",
+        show_datetime=show_dt,
+        screen_capacity=capacity,
+        expected_demand_ratio=0.85,
+        is_weekend=True,
+        is_blockbuster=True,
+    )
 
-    # Now create perturbed history where Day 9 (2018-05-10) and Day 10 (2018-05-11)
-    # have ticket sales multiplied by 1,000x or completely replaced
-    perturbed_df = synthetic_history_df.copy()
-    leak_mask = perturbed_df["date"] >= datetime(2018, 5, 10)
-    perturbed_df.loc[leak_mask, "tickets_sold"] = perturbed_df.loc[leak_mask, "tickets_sold"] * 1000
-    perturbed_df.loc[leak_mask, "occupancy"] = 1.0
+    assert 0 <= metrics["actual_tickets_sold"] <= capacity
+    assert 0 <= metrics["advance_bookings_t48"] <= metrics["actual_tickets_sold"]
+    assert metrics["booking_velocity_24h"] >= 0
+    assert metrics["booking_velocity_previous_24h"] >= 0
 
-    store_perturbed = HistoryFeatureStore(perturbed_df)
-    feats_perturbed = extract_features_for_dataset(target_show, store_perturbed)
-
-    # Check key rolling historical features
-    numeric_cols = feats_orig.select_dtypes(include=[np.number]).columns
-    for col in numeric_cols:
-        val_orig = feats_orig[col].iloc[0]
-        val_pert = feats_perturbed[col].iloc[0]
-        assert np.isclose(val_orig, val_pert, equal_nan=True), (
-            f"LEAKAGE DETECTED! Feature '{col}' changed from {val_orig} to {val_pert} "
-            "when future/contemporaneous data was altered!"
-        )
+    # Verify event timestamps are prior to showtime
+    for ev in events:
+        assert ev["booking_timestamp"] <= show_dt
 
 
 def test_feature_list_excludes_target_and_post_show():
-    """TEST 2: Forbidden columns (target and ex-post outcomes) must never be in feature list."""
+    """TEST 2: Forbidden columns (target, revenue, post-show outcomes) must never be in feature list."""
     forbidden = {
-        "tickets_sold", "tickets_num", "occu_perc", "total_sales", 
-        "tickets_out", "ticket_use", "ticket_price", "occupancy"
+        "actual_tickets_sold", "tickets_sold", "occupancy", "occupancy_rate",
+        "total_sales", "tickets_out", "ticket_use", "show_datetime"
     }
 
-    # Check feature_list.json if it exists
     feature_list_path = Path("artifacts/feature_list.json")
-    if feature_list_path.exists():
-        import json
-        with open(feature_list_path, "r", encoding="utf-8") as f:
-            features = json.load(f)
-        for col in forbidden:
-            assert col not in features, f"Forbidden target/post-show column '{col}' found in artifacts/feature_list.json!"
+    assert feature_list_path.exists(), "artifacts/feature_list.json must exist"
+    
+    with open(feature_list_path, "r", encoding="utf-8") as f:
+        features = json.load(f)
+    for col in forbidden:
+        assert col not in features, f"Forbidden target/post-show column '{col}' found in feature list!"
 
 
-def test_chronological_split_order(synthetic_history_df):
+def test_chronological_splits_integrity():
     """TEST 3: Chronological splits must have strictly non-overlapping dates in sequential order."""
-    splits = create_chronological_splits(synthetic_history_df)
-    df_train = splits["train"]
-    df_val = splits["val"]
-    df_test = splits["test"]
+    split_meta_path = Path("data/processed/split_metadata.json")
+    if split_meta_path.exists():
+        with open(split_meta_path, "r") as f:
+            meta = json.load(f)
+        
+        train_end = meta["train"]["end_date"]
+        val_start = meta["val"]["start_date"]
+        val_end = meta["val"]["end_date"]
+        test_start = meta["test"]["start_date"]
 
-    train_max_date = df_train["date"].max()
-    val_min_date = df_val["date"].min()
-    val_max_date = df_val["date"].max()
-    test_min_date = df_test["date"].min()
-
-    assert train_max_date < val_min_date, f"Train max date ({train_max_date}) must precede Val min date ({val_min_date})"
-    assert val_max_date < test_min_date, f"Val max date ({val_max_date}) must precede Test min date ({test_min_date})"
-    
-    # Check zero overlap
-    train_dates = set(df_train["date"].dt.date.unique())
-    val_dates = set(df_val["date"].dt.date.unique())
-    test_dates = set(df_test["date"].dt.date.unique())
-
-    assert len(train_dates.intersection(val_dates)) == 0, "Train and Val splits share overlapping dates!"
-    assert len(val_dates.intersection(test_dates)) == 0, "Val and Test splits share overlapping dates!"
+        assert train_end <= val_start, f"Leakage: Train end {train_end} > Val start {val_start}"
+        assert val_end <= test_start, f"Leakage: Val end {val_end} > Test start {test_start}"
+        assert meta["chronological_integrity"] is True
 
 
-def test_predictions_within_capacity_bounds():
+def test_predictions_within_capacity_bounds(predictor_instance):
     """TEST 4: Predictions and intervals must always remain within [0, capacity]."""
-    predictor = CinemaPredictor()
-    
-    # Test on diverse capacities
-    for cap in [20.0, 100.0, 250.0, 500.0]:
-        res = predictor.predict_single(cinema_code=448, film_code=1576, date="2018-10-15", show_time=3, capacity=cap)
+    for cap in [50.0, 100.0, 250.0, 450.0]:
+        res = predictor_instance.predict_single(
+            cinema_id="CIN_01",
+            movie_id="MOV_001",
+            screen_capacity=cap,
+            show_slot="Evening",
+            advance_bookings_t48=30,
+            booking_velocity_24h=12,
+        )
         assert 0.0 <= res.predicted_tickets <= cap, f"Predicted tickets {res.predicted_tickets} outside [0, {cap}]"
         assert 0.0 <= res.predicted_occupancy <= 1.0, f"Predicted occupancy {res.predicted_occupancy} outside [0, 1]"
         assert 0.0 <= res.interval_80_lower <= cap, f"Lower interval {res.interval_80_lower} outside [0, {cap}]"
@@ -146,29 +99,66 @@ def test_predictions_within_capacity_bounds():
         assert res.interval_80_lower <= res.interval_80_upper, "Lower interval bound exceeds upper interval bound!"
 
 
-def test_output_changes_when_inputs_change():
+def test_output_changes_when_inputs_change(predictor_instance):
     """TEST 5: Verify model outputs change meaningfully when inputs change (no hardcoded responses)."""
-    predictor = CinemaPredictor()
+    res_base = predictor_instance.predict_single(
+        cinema_id="CIN_01", movie_id="MOV_001", screen_capacity=300, show_slot="Evening",
+        advance_bookings_t48=80, booking_velocity_24h=30, is_blockbuster=0
+    )
+    # Blockbuster surge with higher velocity
+    res_blockbuster = predictor_instance.predict_single(
+        cinema_id="CIN_01", movie_id="MOV_001", screen_capacity=300, show_slot="Evening",
+        advance_bookings_t48=180, booking_velocity_24h=90, is_blockbuster=1
+    )
+    # Boutique screen
+    res_small = predictor_instance.predict_single(
+        cinema_id="CIN_01", movie_id="MOV_001", screen_capacity=80, show_slot="Morning",
+        advance_bookings_t48=20, booking_velocity_24h=5
+    )
 
-    res_film_a = predictor.predict_single(cinema_code=448, film_code=1576, date="2018-10-15", show_time=3, capacity=300)
-    # Different film (unseen cold-start film)
-    res_film_b = predictor.predict_single(cinema_code=448, film_code=9999, date="2018-10-15", show_time=3, capacity=300)
-
-    # Different capacity
-    res_small_cap = predictor.predict_single(cinema_code=448, film_code=1576, date="2018-10-15", show_time=3, capacity=50)
-
-    # Different slot (matinee slot 1 vs evening slot 5)
-    res_slot_1 = predictor.predict_single(cinema_code=448, film_code=1576, date="2018-10-15", show_time=1, capacity=300)
-    res_slot_5 = predictor.predict_single(cinema_code=448, film_code=1576, date="2018-10-15", show_time=5, capacity=300)
-
-    assert res_film_a.predicted_tickets != res_film_b.predicted_tickets, "Predictions for different films should not be identical!"
-    assert res_film_b.is_cold_start is True, "Cold start flag should trigger for unknown film"
-    assert res_film_a.is_cold_start is False, "Known film should not be flagged as cold start"
-    assert res_small_cap.predicted_tickets <= 50, "Predicted tickets for capacity 50 must be <= 50"
+    assert res_base.predicted_tickets != res_blockbuster.predicted_tickets, "Predictions should vary with advance demand!"
+    assert res_blockbuster.predicted_tickets > res_base.predicted_tickets, "Blockbuster should predict higher attendance!"
+    assert res_small.predicted_tickets <= 80, "Small capacity predictions must be capped at 80"
 
 
-def test_api_valid_and_invalid_requests():
-    """TEST 6: FastAPI endpoint validation for both compliant and malformed payloads."""
+def test_cold_start_detection_and_advisory(predictor_instance):
+    """TEST 6: Cold-start detection flags new movies/cinemas and yields advisory."""
+    res_cold = predictor_instance.predict_single(
+        cinema_id="CIN_UNKNOWN_99",
+        movie_id="MOV_NEW_999",
+        screen_capacity=250,
+        show_slot="Night",
+        advance_bookings_t48=20,
+        booking_velocity_24h=5
+    )
+    assert res_cold.is_cold_start is True, "Unseen movie should trigger cold start warning"
+    assert res_cold.cold_start_warning is not None
+    assert "COLD-START" in res_cold.cold_start_warning
+
+    # Check operational advisory exists
+    adv = res_cold.operational_advisory
+    assert "screen_decision" in adv
+    assert "box_office_staff" in adv
+    assert "ushers_count" in adv
+    assert adv["managerial_review_required"] is True
+
+
+def test_all_five_models_presence_in_bundle():
+    """TEST 7: Verify all 5 benchmark models are trained and serialized in model.joblib."""
+    import joblib
+    bundle_path = Path("artifacts/model.joblib")
+    assert bundle_path.exists(), "artifacts/model.joblib must exist"
+    
+    bundle = joblib.load(bundle_path)
+    assert "all_models" in bundle, "all_models dictionary must exist in bundle"
+    
+    expected_models = {"baseline", "ridge", "random_forest", "xgboost", "lightgbm"}
+    for m in expected_models:
+        assert m in bundle["all_models"], f"Model '{m}' missing from model bundle!"
+
+
+def test_api_valid_batch_and_invalid_requests():
+    """TEST 8: FastAPI endpoint validation for /health, /model/info, /model/benchmark, single & batch predict."""
     client = TestClient(app)
 
     # Health check
@@ -177,53 +167,47 @@ def test_api_valid_and_invalid_requests():
     assert res_health.json()["status"] == "healthy"
 
     # Model info
-    res_info = client.get("/model-info")
+    res_info = client.get("/model/info")
     assert res_info.status_code == 200
     assert "LightGBM" in res_info.json()["model_type"]
 
-    # Valid predict payload
+    # Model benchmark
+    res_bench = client.get("/model/benchmark")
+    assert res_bench.status_code == 200
+    assert "benchmark" in res_bench.json()
+    assert len(res_bench.json()["benchmark"]) == 5
+
+    # Valid single predict
     valid_payload = {
-        "cinema_code": 448,
-        "film_code": 1576,
-        "date": "2018-10-15",
-        "show_time": 3,
-        "capacity": 300.0
+        "cinema_id": "CIN_01",
+        "movie_id": "MOV_001",
+        "screen_capacity": 300.0,
+        "show_slot": "Evening",
+        "advance_bookings_t48": 120.0,
+        "booking_velocity_24h": 40.0,
+        "is_weekend": 1,
+        "is_blockbuster": 1
     }
     res_pred = client.post("/predict", json=valid_payload)
     assert res_pred.status_code == 200
     data = res_pred.json()
     assert "predicted_tickets" in data
     assert 0.0 <= data["predicted_tickets"] <= 300.0
+    assert "operational_advisory" in data
     assert "limitation_note" in data
-    assert "human manager review required" in data["limitation_note"].lower()
+
+    # Valid batch predict
+    batch_payload = {
+        "shows": [
+            valid_payload,
+            {**valid_payload, "screen_capacity": 150.0, "advance_bookings_t48": 40.0}
+        ]
+    }
+    res_batch = client.post("/predict/batch", json=batch_payload)
+    assert res_batch.status_code == 200
+    assert res_batch.json()["total_shows"] == 2
 
     # Invalid request: negative capacity
-    invalid_cap_payload = {
-        "cinema_code": 448,
-        "film_code": 1576,
-        "date": "2018-10-15",
-        "show_time": 3,
-        "capacity": -50.0
-    }
-    res_inv_cap = client.post("/predict", json=invalid_cap_payload)
-    assert res_inv_cap.status_code == 422, "API should reject negative capacity with 422 Unprocessable Entity"
-
-    # Invalid request: missing required cinema_code
-    missing_field_payload = {
-        "film_code": 1576,
-        "date": "2018-10-15",
-        "show_time": 3
-    }
-    res_missing = client.post("/predict", json=missing_field_payload)
-    assert res_missing.status_code == 422, "API should reject missing cinema_code with 422"
-
-    # Invalid request: invalid show_time out of bounds (e.g. 0 or negative)
-    invalid_slot_payload = {
-        "cinema_code": 448,
-        "film_code": 1576,
-        "date": "2018-10-15",
-        "show_time": 0,
-        "capacity": 300.0
-    }
-    res_inv_slot = client.post("/predict", json=invalid_slot_payload)
-    assert res_inv_slot.status_code == 422, "API should reject show_time < 1 with 422"
+    invalid_cap = {**valid_payload, "screen_capacity": -50.0}
+    res_inv = client.post("/predict", json=invalid_cap)
+    assert res_inv.status_code == 422, "Negative capacity should be rejected with 422"

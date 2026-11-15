@@ -1,27 +1,35 @@
-"""End-to-end training and evaluation pipeline for Cinema Ticket Demand Forecasting.
-Reproducible, leakage-free, and cross-platform.
 """
+CinemaOps AI - Multi-Model Training and Benchmark Suite
+Trains and validates 5 candidate architectures under strict chronological splitting:
+1. Hierarchical Occupancy Baseline (4-level fallback)
+2. Regularized Linear Model (Ridge Regression)
+3. Random Forest Regressor
+4. XGBoost Regressor
+5. LightGBM Regressor (L1 Loss)
+
+Evaluates MAE, RMSE, WAPE, Occupancy MAE, Capacity Violations, Cold-Start slices,
+computes 80% conformal prediction intervals, and computes SHAP feature attributions.
+"""
+
+import os
 import json
 from pathlib import Path
-import joblib
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from lightgbm import LGBMRegressor
-from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
+import joblib
+import matplotlib.pyplot as plt
+import shap
 from sklearn.linear_model import Ridge
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler, TargetEncoder
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import StandardScaler
+import xgboost as xgb
+import lightgbm as lgb
 
-from src.data.clean import clean_dataset, generate_leakage_table
-from src.evaluation.metrics import compute_metrics, evaluate_slices
-from src.features.build_features import (
-    HistoryFeatureStore,
-    create_chronological_splits,
-    extract_features_for_dataset,
-)
 from src.models.baseline import HierarchicalOccupancyBaseline
+from src.features.build_features import compute_features, HistoryPriors
+from src.evaluation.metrics import compute_metrics, evaluate_slices
+from src.data.preprocessing import preprocess_and_split
+
 
 ARTIFACTS_DIR = Path("artifacts")
 REPORTS_DIR = Path("reports")
@@ -29,300 +37,337 @@ PROCESSED_DIR = Path("data/processed")
 RANDOM_SEED = 42
 
 
-def get_feature_columns(df_features: pd.DataFrame) -> list[str]:
-    """Return explicit list of predictor feature columns, strictly excluding targets and leaks."""
+def get_feature_columns(df_features: pd.DataFrame) -> list:
+    """Return explicit list of predictor feature columns, strictly excluding target and post-show leaks."""
     forbidden = {
-        "tickets_sold", "occupancy", "total_sales", "tickets_out", 
-        "ticket_use", "occu_perc", "ticket_price", "date"
+        "actual_tickets_sold", "tickets_sold", "occupancy", "occupancy_rate",
+        "total_sales", "tickets_out", "ticket_use", "show_datetime", "show_date",
+        "show_time", "show_id", "cinema_id", "movie_id", "screen_id"
     }
-    feature_cols = [c for c in df_features.columns if c not in forbidden]
-    return feature_cols
+    return [c for c in df_features.columns if c not in forbidden]
 
 
-def train_and_evaluate_all():
-    """Execute complete end-to-end training, model comparison, and artifact serialization."""
+def train_and_benchmark_all():
+    """Execute complete end-to-end multi-model training and evaluation benchmark."""
     print("=" * 80)
-    print("STEP 2 & 3: CLEANING, FEATURES, TRAINING & EVALUATION")
+    print("CINEMAOPS AI: MULTI-MODEL TRAINING & BENCHMARK PIPELINE")
     print("=" * 80)
 
-    # 1. Clean data and generate leakage table
-    clean_parquet = PROCESSED_DIR / "cleaned_cinema_shows.parquet"
-    if not clean_parquet.exists():
-        print("Cleaning dataset...")
-        generate_leakage_table()
-        df_clean, _ = clean_dataset()
-    else:
-        print(f"Loading cleaned dataset from {clean_parquet}...")
-        df_clean = pd.read_parquet(clean_parquet)
+    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 2. Chronological Splits (~70% train / ~15% val / ~15% test)
-    print("\nCreating chronological splits...")
-    splits = create_chronological_splits(df_clean)
-    df_train = splits["train"]
-    df_val = splits["val"]
-    df_test = splits["test"]
+    # 1. Load or prepare processed splits
+    train_path = PROCESSED_DIR / "train.parquet"
+    val_path = PROCESSED_DIR / "val.parquet"
+    test_path = PROCESSED_DIR / "test.parquet"
 
-    # 3. Initialize History Feature Store and save lookup
-    print("\nInitializing HistoryFeatureStore (T-48h horizon)...")
-    history_store = HistoryFeatureStore(df_clean)
-    history_store.save_lookup(ARTIFACTS_DIR / "history.parquet")
+    if not (train_path.exists() and val_path.exists() and test_path.exists()):
+        print("Processed splits not found. Running preprocessing pipeline...")
+        preprocess_and_split()
 
-    # 4. Extract features
-    print("Extracting features for Train set...")
-    X_train_raw = extract_features_for_dataset(df_train, history_store)
-    print("Extracting features for Val set...")
-    X_val_raw = extract_features_for_dataset(df_val, history_store)
-    print("Extracting features for Test set...")
-    X_test_raw = extract_features_for_dataset(df_test, history_store)
+    print(f"Loading datasets from {PROCESSED_DIR}...")
+    df_train = pd.read_parquet(train_path)
+    df_val = pd.read_parquet(val_path)
+    df_test = pd.read_parquet(test_path)
 
-    feature_cols = get_feature_columns(X_train_raw)
-    print(f"\nTotal predictor features: {len(feature_cols)}")
-    
-    # Save feature list
-    with open(ARTIFACTS_DIR / "feature_list.json", "w", encoding="utf-8") as f:
+    print(f"Train set: {len(df_train)} shows ({df_train['show_date'].min()} to {df_train['show_date'].max()})")
+    print(f"Val set:   {len(df_val)} shows ({df_val['show_date'].min()} to {df_val['show_date'].max()})")
+    print(f"Test set:  {len(df_test)} shows ({df_test['show_date'].min()} to {df_test['show_date'].max()})")
+
+    # 2. Compute priors strictly on train split
+    print("\nComputing historical priors on training split...")
+    priors = HistoryPriors.fit_from_train(df_train)
+    priors.save(ARTIFACTS_DIR / "priors.json")
+
+    # 3. Extract leak-free features
+    print("Extracting features for Train, Val, and Test...")
+    X_train_df, _ = compute_features(df_train, priors=priors)
+    X_val_df, _ = compute_features(df_val, priors=priors)
+    X_test_df, _ = compute_features(df_test, priors=priors)
+
+    feature_cols = get_feature_columns(X_train_df)
+    print(f"Total modeling features ({len(feature_cols)}): {feature_cols}")
+
+    with open(ARTIFACTS_DIR / "feature_list.json", "w") as f:
         json.dump(feature_cols, f, indent=2)
 
-    y_train = df_train["tickets_sold"].to_numpy(dtype=float)
-    y_val = df_val["tickets_sold"].to_numpy(dtype=float)
-    y_test = df_test["tickets_sold"].to_numpy(dtype=float)
+    X_train = X_train_df[feature_cols].values
+    X_val = X_val_df[feature_cols].values
+    X_test = X_test_df[feature_cols].values
 
-    cap_train = df_train["capacity"].to_numpy(dtype=float)
-    cap_val = df_val["capacity"].to_numpy(dtype=float)
-    cap_test = df_test["capacity"].to_numpy(dtype=float)
+    y_train = df_train["actual_tickets_sold"].to_numpy(dtype=float)
+    y_val = df_val["actual_tickets_sold"].to_numpy(dtype=float)
+    y_test = df_test["actual_tickets_sold"].to_numpy(dtype=float)
 
-    # 5. Baseline: Hierarchical Occupancy Model
-    print("\n--- Training Hierarchical Occupancy Baseline ---")
-    baseline = HierarchicalOccupancyBaseline()
-    baseline.fit(df_train)
+    cap_train = df_train["screen_capacity"].to_numpy(dtype=float)
+    cap_val = df_val["screen_capacity"].to_numpy(dtype=float)
+    cap_test = df_test["screen_capacity"].to_numpy(dtype=float)
 
-    val_preds_base = baseline.predict(df_val)
-    test_preds_base = baseline.predict(df_test)
+    benchmark_records = []
+    models_dict = {}
 
-    val_metrics_base = compute_metrics(y_val, val_preds_base, cap_val)
-    test_metrics_base = compute_metrics(y_test, test_preds_base, cap_test)
-    print("Baseline Test Metrics:", test_metrics_base)
+    # -------------------------------------------------------------
+    # MODEL 1: Hierarchical Occupancy Baseline (4-Level Fallback)
+    # -------------------------------------------------------------
+    print("\n[1/5] Training Model 1: Hierarchical Occupancy Baseline...")
+    baseline_model = HierarchicalOccupancyBaseline()
+    baseline_model.fit(df_train)
+    models_dict["baseline"] = baseline_model
 
-    # 6. Candidate 1: Ridge Regression (predicting occupancy)
-    print("\n--- Training Ridge Regression (on Occupancy) ---")
-    y_train_occu = y_train / np.maximum(1.0, cap_train)
-    
-    cat_id_cols = ["cinema_code", "film_code"]
-    num_cols = [c for c in feature_cols if c not in cat_id_cols]
+    raw_preds_base_test = baseline_model.predict(df_test)
+    preds_base_test = np.clip(raw_preds_base_test, 0.0, cap_test)
+    raw_preds_base_val = baseline_model.predict(df_val)
+    preds_base_val = np.clip(raw_preds_base_val, 0.0, cap_val)
 
-    preprocessor_ridge = ColumnTransformer(
-        transformers=[
-            ("num", Pipeline([("imputer", SimpleImputer(strategy="median")), ("scaler", StandardScaler())]), num_cols),
-            ("cat", TargetEncoder(cv=5, smooth="auto", random_state=RANDOM_SEED), cat_id_cols)
-        ]
-    )
+    m_base = compute_metrics(y_test, preds_base_test, cap_test)
+    m_base["Violation_Rate_Pct"] = float(np.mean(raw_preds_base_test > cap_test) * 100.0)
+    benchmark_records.append({"Model": "Hierarchical Baseline", **m_base})
+    print(f"  Baseline Test -> MAE: {m_base['MAE']:.2f}, RMSE: {m_base['RMSE']:.2f}, WAPE: {m_base['WAPE_pct']:.2f}%")
 
-    ridge_pipeline = Pipeline([
-        ("preprocessor", preprocessor_ridge),
-        ("regressor", Ridge(alpha=100.0, random_state=RANDOM_SEED))
-    ])
+    # -------------------------------------------------------------
+    # MODEL 2: Ridge Regression (Scaled Linear Benchmark)
+    # -------------------------------------------------------------
+    print("\n[2/5] Training Model 2: Ridge Regression...")
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_val_scaled = scaler.transform(X_val)
+    X_test_scaled = scaler.transform(X_test)
 
-    ridge_pipeline.fit(X_train_raw[feature_cols], y_train_occu)
+    ridge_model = Ridge(alpha=50.0, random_state=RANDOM_SEED)
+    ridge_model.fit(X_train_scaled, y_train)
+    models_dict["ridge"] = ridge_model
+    models_dict["scaler"] = scaler
 
-    # Predict occupancy, multiply by capacity, clip to [0, capacity]
-    val_preds_ridge_occu = ridge_pipeline.predict(X_val_raw[feature_cols])
-    val_preds_ridge = np.clip(val_preds_ridge_occu * cap_val, 0.0, cap_val)
+    raw_preds_ridge_test = ridge_model.predict(X_test_scaled)
+    preds_ridge_test = np.clip(raw_preds_ridge_test, 0.0, cap_test)
+    raw_preds_ridge_val = ridge_model.predict(X_val_scaled)
+    preds_ridge_val = np.clip(raw_preds_ridge_val, 0.0, cap_val)
 
-    test_preds_ridge_occu = ridge_pipeline.predict(X_test_raw[feature_cols])
-    test_preds_ridge = np.clip(test_preds_ridge_occu * cap_test, 0.0, cap_test)
+    m_ridge = compute_metrics(y_test, preds_ridge_test, cap_test)
+    m_ridge["Violation_Rate_Pct"] = float(np.mean(raw_preds_ridge_test > cap_test) * 100.0)
+    benchmark_records.append({"Model": "Ridge Regression", **m_ridge})
+    print(f"  Ridge Test      -> MAE: {m_ridge['MAE']:.2f}, RMSE: {m_ridge['RMSE']:.2f}, WAPE: {m_ridge['WAPE_pct']:.2f}%")
 
-    val_metrics_ridge = compute_metrics(y_val, val_preds_ridge, cap_val)
-    test_metrics_ridge = compute_metrics(y_test, test_preds_ridge, cap_test)
-    print("Ridge Test Metrics:", test_metrics_ridge)
-
-    # 7. Candidate 2: LightGBM Regressor (predicting tickets directly with L1 loss)
-    print("\n--- Training LightGBM Regressor ---")
-    cat_features_lgb = ["cinema_code", "film_code", "weekday", "month", "quarter", "show_time", "is_weekend"]
-    
-    # Format categoricals
-    X_train_lgb = X_train_raw[feature_cols].copy()
-    X_val_lgb = X_val_raw[feature_cols].copy()
-    X_test_lgb = X_test_raw[feature_cols].copy()
-
-    for col in cat_features_lgb:
-        if col in X_train_lgb.columns:
-            X_train_lgb[col] = X_train_lgb[col].astype("category")
-            X_val_lgb[col] = X_val_lgb[col].astype("category")
-            X_test_lgb[col] = X_test_lgb[col].astype("category")
-
-    lgb_model = LGBMRegressor(
-        objective="regression_l1",  # Optimizes MAE directly
-        n_estimators=300,
-        learning_rate=0.05,
-        num_leaves=31,
-        min_child_samples=25,
-        subsample=0.8,
-        colsample_bytree=0.8,
+    # -------------------------------------------------------------
+    # MODEL 3: Random Forest Regressor
+    # -------------------------------------------------------------
+    print("\n[3/5] Training Model 3: Random Forest Regressor...")
+    rf_model = RandomForestRegressor(
+        n_estimators=100,
+        max_depth=14,
+        min_samples_split=10,
+        min_samples_leaf=4,
         random_state=RANDOM_SEED,
         n_jobs=-1,
-        verbose=-1
     )
+    rf_model.fit(X_train, y_train)
+    models_dict["random_forest"] = rf_model
 
-    lgb_model.fit(
-        X_train_lgb, 
-        y_train,
-        eval_set=[(X_val_lgb, y_val)],
-        callbacks=[]
+    raw_preds_rf_test = rf_model.predict(X_test)
+    preds_rf_test = np.clip(raw_preds_rf_test, 0.0, cap_test)
+    raw_preds_rf_val = rf_model.predict(X_val)
+    preds_rf_val = np.clip(raw_preds_rf_val, 0.0, cap_val)
+
+    m_rf = compute_metrics(y_test, preds_rf_test, cap_test)
+    m_rf["Violation_Rate_Pct"] = float(np.mean(raw_preds_rf_test > cap_test) * 100.0)
+    benchmark_records.append({"Model": "Random Forest", **m_rf})
+    print(f"  Random Forest   -> MAE: {m_rf['MAE']:.2f}, RMSE: {m_rf['RMSE']:.2f}, WAPE: {m_rf['WAPE_pct']:.2f}%")
+
+    # -------------------------------------------------------------
+    # MODEL 4: XGBoost Regressor
+    # -------------------------------------------------------------
+    print("\n[4/5] Training Model 4: XGBoost Regressor...")
+    xgb_model = xgb.XGBRegressor(
+        n_estimators=250,
+        learning_rate=0.05,
+        max_depth=6,
+        subsample=0.85,
+        colsample_bytree=0.85,
+        random_state=RANDOM_SEED,
+        n_jobs=-1,
     )
+    xgb_model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
+    models_dict["xgboost"] = xgb_model
 
-    val_preds_lgb_raw = lgb_model.predict(X_val_lgb)
-    val_preds_lgb = np.clip(val_preds_lgb_raw, 0.0, cap_val)
+    raw_preds_xgb_test = xgb_model.predict(X_test)
+    preds_xgb_test = np.clip(raw_preds_xgb_test, 0.0, cap_test)
+    raw_preds_xgb_val = xgb_model.predict(X_val)
+    preds_xgb_val = np.clip(raw_preds_xgb_val, 0.0, cap_val)
 
-    test_preds_lgb_raw = lgb_model.predict(X_test_lgb)
-    test_preds_lgb = np.clip(test_preds_lgb_raw, 0.0, cap_test)
+    m_xgb = compute_metrics(y_test, preds_xgb_test, cap_test)
+    m_xgb["Violation_Rate_Pct"] = float(np.mean(raw_preds_xgb_test > cap_test) * 100.0)
+    benchmark_records.append({"Model": "XGBoost", **m_xgb})
+    print(f"  XGBoost         -> MAE: {m_xgb['MAE']:.2f}, RMSE: {m_xgb['RMSE']:.2f}, WAPE: {m_xgb['WAPE_pct']:.2f}%")
 
-    val_metrics_lgb = compute_metrics(y_val, val_preds_lgb, cap_val)
-    test_metrics_lgb = compute_metrics(y_test, test_preds_lgb, cap_test)
-    print("LightGBM Test Metrics:", test_metrics_lgb)
+    # -------------------------------------------------------------
+    # MODEL 5: LightGBM Regressor (L1 Loss)
+    # -------------------------------------------------------------
+    print("\n[5/5] Training Model 5: LightGBM Regressor (L1 Optimization)...")
+    lgb_model = lgb.LGBMRegressor(
+        objective="regression_l1",
+        n_estimators=300,
+        learning_rate=0.04,
+        num_leaves=31,
+        min_child_samples=20,
+        subsample=0.85,
+        colsample_bytree=0.85,
+        random_state=RANDOM_SEED,
+        n_jobs=-1,
+        verbose=-1,
+    )
+    lgb_model.fit(X_train, y_train, eval_set=[(X_val, y_val)])
+    models_dict["lightgbm"] = lgb_model
 
-    # 8. Model Comparison Table
+    raw_preds_lgb_test = lgb_model.predict(X_test)
+    preds_lgb_test = np.clip(raw_preds_lgb_test, 0.0, cap_test)
+    raw_preds_lgb_val = lgb_model.predict(X_val)
+    preds_lgb_val = np.clip(raw_preds_lgb_val, 0.0, cap_val)
+
+    m_lgb = compute_metrics(y_test, preds_lgb_test, cap_test)
+    m_lgb["Violation_Rate_Pct"] = float(np.mean(raw_preds_lgb_test > cap_test) * 100.0)
+    benchmark_records.append({"Model": "LightGBM", **m_lgb})
+    print(f"  LightGBM        -> MAE: {m_lgb['MAE']:.2f}, RMSE: {m_lgb['RMSE']:.2f}, WAPE: {m_lgb['WAPE_pct']:.2f}%")
+
+    # -------------------------------------------------------------
+    # MODEL BENCHMARK TABLE COMPARISON
+    # -------------------------------------------------------------
+    df_benchmark = pd.DataFrame(benchmark_records).sort_values(by="MAE").reset_index(drop=True)
     print("\n" + "=" * 80)
-    print("TEST-SET METRIC COMPARISON TABLE (Held-out 2018-09-30 to 2018-11-04)")
+    print("5-MODEL HELD-OUT CHRONOLOGICAL TEST BENCHMARK RESULTS")
     print("=" * 80)
-    comparison_df = pd.DataFrame([
-        {"Model": "Hierarchical Baseline", **test_metrics_base},
-        {"Model": "Ridge (Occupancy)", **test_metrics_ridge},
-        {"Model": "LightGBM (Tickets L1)", **test_metrics_lgb}
-    ])
-    print(comparison_df.to_string(index=False))
+    print(df_benchmark.to_string(index=False))
 
-    # Log experiments
-    experiments_records = [
-        {"timestamp": pd.Timestamp.now().isoformat(), "model": "Hierarchical Baseline", "split": "val", **val_metrics_base},
-        {"timestamp": pd.Timestamp.now().isoformat(), "model": "Hierarchical Baseline", "split": "test", **test_metrics_base},
-        {"timestamp": pd.Timestamp.now().isoformat(), "model": "Ridge (Occupancy)", "split": "val", **val_metrics_ridge},
-        {"timestamp": pd.Timestamp.now().isoformat(), "model": "Ridge (Occupancy)", "split": "test", **test_metrics_ridge},
-        {"timestamp": pd.Timestamp.now().isoformat(), "model": "LightGBM (Tickets L1)", "split": "val", **val_metrics_lgb},
-        {"timestamp": pd.Timestamp.now().isoformat(), "model": "LightGBM (Tickets L1)", "split": "test", **test_metrics_lgb},
-    ]
-    pd.DataFrame(experiments_records).to_csv(REPORTS_DIR / "experiments.csv", index=False)
+    benchmark_json = df_benchmark.to_dict(orient="records")
+    with open(ARTIFACTS_DIR / "model_benchmark.json", "w") as f:
+        json.dump(benchmark_json, f, indent=2)
 
-    # 9. Uncertainty Calibration (80% Prediction Interval from Validation Residuals)
-    val_residuals = y_val - val_preds_lgb
+    # -------------------------------------------------------------
+    # UNCERTAINTY CALIBRATION (Conformal Prediction 80% Interval)
+    # -------------------------------------------------------------
+    print("\nComputing 80% Conformal Prediction Intervals from Validation Residuals...")
+    val_residuals = y_val - preds_lgb_val
     q10 = float(np.percentile(val_residuals, 10.0))
     q90 = float(np.percentile(val_residuals, 90.0))
 
     # Test coverage
-    test_lower = np.maximum(0.0, test_preds_lgb + q10)
-    test_upper = np.minimum(cap_test, test_preds_lgb + q90)
-    test_coverage_pct = float(np.mean((y_test >= test_lower) & (y_test <= test_upper)) * 100.0)
-    print(f"\nUncertainty Calibration: Val Residual Q10={q10:.2f}, Q90={q90:.2f}")
-    print(f"Empirical 80% Prediction Interval Test Coverage: {test_coverage_pct:.2f}%")
+    test_lower = np.maximum(0.0, preds_lgb_test + q10)
+    test_upper = np.minimum(cap_test, preds_lgb_test + q90)
+    empirical_coverage = float(np.mean((y_test >= test_lower) & (y_test <= test_upper)) * 100.0)
+    mean_interval_width = float(np.mean(test_upper - test_lower))
 
-    # 10. Operational Slicing Analysis on Best Model (LightGBM)
-    slice_eval = evaluate_slices(df_test.assign(**X_test_raw), test_preds_lgb)
-    print("\n--- Capacity Bucket Slices ---")
-    print(pd.DataFrame(slice_eval["capacity_buckets"]).T.to_string())
-
-    print("\n--- Cold-Start & History Slices ---")
-    print(pd.DataFrame(slice_eval["cold_start"]).T.to_string())
-
-    # 11. Error Analysis: Top 10 worst predictions on test set
-    test_errors = np.abs(y_test - test_preds_lgb)
-    top10_idx = np.argsort(test_errors)[::-1][:10]
-
-    worst_records = []
-    for idx in top10_idx:
-        row = df_test.iloc[idx]
-        actual = float(y_test[idx])
-        pred = float(test_preds_lgb[idx])
-        err = float(test_errors[idx])
-        cap = float(cap_test[idx])
-        
-        # Operational reason heuristic
-        if actual >= cap:
-            reason = "Sudden sell-out / censored blockbuster surge"
-        elif pred > actual and actual <= 10:
-            reason = "Rapid demand dropoff after opening release"
-        elif actual > pred * 2:
-            reason = "Unexpected local event or holiday attendance spike"
-        else:
-            reason = "High theater capacity variance"
-
-        worst_records.append({
-            "date": str(row["date"])[:10],
-            "cinema_code": int(row["cinema_code"]),
-            "film_code": int(row["film_code"]),
-            "show_time": int(row["show_time"]),
-            "capacity": cap,
-            "actual_tickets": actual,
-            "predicted_tickets": round(pred, 1),
-            "abs_error": round(err, 1),
-            "likely_operational_reason": reason
-        })
-
-    worst_df = pd.DataFrame(worst_records)
-    worst_df.to_csv(REPORTS_DIR / "top10_worst_predictions.csv", index=False)
-    print("\n--- Top 10 Worst Test Predictions ---")
-    print(worst_df[["date", "film_code", "cinema_code", "actual_tickets", "predicted_tickets", "abs_error", "likely_operational_reason"]].to_string(index=False))
-
-    # 12. Residual Plot
-    plt.figure(figsize=(10, 5))
-    plt.scatter(test_preds_lgb, y_test - test_preds_lgb, alpha=0.15, s=8, color="#1f77b4")
-    plt.axhline(0, color="red", linestyle="--", linewidth=1.5)
-    plt.axhline(q10, color="orange", linestyle=":", label=f"Val Residual Q10 ({q10:.1f})")
-    plt.axhline(q90, color="orange", linestyle=":", label=f"Val Residual Q90 ({q90:.1f})")
-    plt.title("Residual Plot on Held-Out Test Set (LightGBM)")
-    plt.xlabel("Predicted Tickets")
-    plt.ylabel("Residual (Actual - Predicted)")
-    plt.grid(True, linestyle="--", alpha=0.5)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(REPORTS_DIR / "residual_plot.png", dpi=200)
-    plt.close()
-    print(f"Residual plot saved to {REPORTS_DIR / 'residual_plot.png'}")
-
-    # 13. Global Feature Importance (Gain)
-    importance_df = pd.DataFrame({
-        "feature": feature_cols,
-        "importance_gain": lgb_model.booster_.feature_importance(importance_type="gain")
-    }).sort_values(by="importance_gain", ascending=False).reset_index(drop=True)
-    importance_df.to_csv(REPORTS_DIR / "feature_importance.csv", index=False)
-    print("\n--- Top 10 Features by Importance Gain ---")
-    print(importance_df.head(10).to_string(index=False))
-
-    # 14. Save Complete Artifacts
-    full_metrics = {
-        "models": {
-            "baseline": test_metrics_base,
-            "ridge": test_metrics_ridge,
-            "lightgbm": test_metrics_lgb
-        },
-        "uncertainty_80pct": {
-            "q10_residual": q10,
-            "q90_residual": q90,
-            "test_coverage_pct": test_coverage_pct
-        },
-        "operational_slices": slice_eval,
-        "selected_best_model": "lightgbm"
+    conformal_summary = {
+        "target_coverage_pct": 80.0,
+        "residual_q10": round(q10, 3),
+        "residual_q90": round(q90, 3),
+        "empirical_test_coverage_pct": round(empirical_coverage, 2),
+        "mean_interval_width": round(mean_interval_width, 2),
     }
-    with open(ARTIFACTS_DIR / "metrics.json", "w", encoding="utf-8") as f:
+    print(f"  Residual Q10: {q10:.2f}, Q90: {q90:.2f}")
+    print(f"  Empirical Test Coverage: {empirical_coverage:.2f}% (Target: 80%)")
+    print(f"  Mean 80% Interval Width: {mean_interval_width:.1f} tickets")
+
+    with open(ARTIFACTS_DIR / "conformal_quantiles.json", "w") as f:
+        json.dump(conformal_summary, f, indent=2)
+
+    # -------------------------------------------------------------
+    # COLD-START & SLICING EVALUATION
+    # -------------------------------------------------------------
+    print("\nEvaluating Operational Slices & Cold-Start Segments on LightGBM...")
+    df_test_eval = df_test.copy()
+    df_test_eval["is_new_film"] = X_test_df["is_new_movie"]
+    df_test_eval["is_low_history"] = X_test_df["is_low_history"]
+    df_test_eval["capacity"] = cap_test
+    df_test_eval["tickets_sold"] = y_test
+
+    slice_metrics = evaluate_slices(df_test_eval, preds_lgb_test, target_col="tickets_sold", capacity_col="capacity")
+
+    # -------------------------------------------------------------
+    # SHAP EXPLAINABILITY (Global & Local)
+    # -------------------------------------------------------------
+    print("\nComputing SHAP Attributions for LightGBM...")
+    explainer = shap.TreeExplainer(lgb_model)
+    # Sample 800 test instances for fast and accurate attributions
+    sample_size = min(800, len(X_test))
+    shap_sample = X_test[:sample_size]
+    shap_values = explainer.shap_values(shap_sample)
+
+    # Global feature importance = mean(|SHAP value|)
+    mean_abs_shap = np.mean(np.abs(shap_values), axis=0)
+    shap_importance = sorted(
+        [{"feature": f, "importance": round(float(imp), 4)} for f, imp in zip(feature_cols, mean_abs_shap)],
+        key=lambda x: x["importance"],
+        reverse=True,
+    )
+
+    with open(ARTIFACTS_DIR / "shap_summary.json", "w") as f:
+        json.dump(shap_importance, f, indent=2)
+
+    with open(ARTIFACTS_DIR / "feature_importance.json", "w") as f:
+        json.dump(shap_importance, f, indent=2)
+
+    print("Top 8 Features by Global SHAP Importance:")
+    for item in shap_importance[:8]:
+        print(f"  - {item['feature']}: {item['importance']:.4f}")
+
+    # Generate SHAP Summary Plot
+    try:
+        plt.figure(figsize=(10, 6))
+        shap.summary_plot(
+            shap_values,
+            shap_sample,
+            feature_names=feature_cols,
+            show=False,
+            max_display=12
+        )
+        plt.tight_layout()
+        plt.savefig(REPORTS_DIR / "shap_summary.png", dpi=200, bbox_inches="tight")
+        plt.close()
+        print(f"SHAP summary plot saved to {REPORTS_DIR / 'shap_summary.png'}")
+    except Exception as e:
+        print(f"Warning: SHAP plot rendering skipped: {e}")
+
+    # -------------------------------------------------------------
+    # SAVE MODEL BUNDLE & FULL METRICS ARTIFACTS
+    # -------------------------------------------------------------
+    full_metrics = {
+        "benchmark": benchmark_json,
+        "conformal": conformal_summary,
+        "operational_slices": slice_metrics,
+        "best_model": "lightgbm",
+        "best_model_test_mae": m_lgb["MAE"],
+        "best_model_test_wape": m_lgb["WAPE_pct"],
+        "best_model_test_rmse": m_lgb["RMSE"],
+    }
+
+    with open(ARTIFACTS_DIR / "metrics.json", "w") as f:
         json.dump(full_metrics, f, indent=2)
 
-    # Save trained model bundle for inference
-    model_bundle = {
+    bundle = {
         "model": lgb_model,
-        "ridge_model": ridge_pipeline,
-        "baseline_model": baseline,
+        "all_models": {
+            "baseline": baseline_model,
+            "ridge": ridge_model,
+            "random_forest": rf_model,
+            "xgboost": xgb_model,
+            "lightgbm": lgb_model,
+        },
+        "scaler": scaler,
         "feature_cols": feature_cols,
-        "cat_features": cat_features_lgb,
         "residual_q10": q10,
         "residual_q90": q90,
-        "metrics": full_metrics
+        "priors": priors.priors,
+        "metrics": full_metrics,
+        "shap_importance": shap_importance,
     }
-    joblib.dump(model_bundle, ARTIFACTS_DIR / "model.joblib")
-    print(f"\nModel bundle saved to {ARTIFACTS_DIR / 'model.joblib'}")
+
+    joblib.dump(bundle, ARTIFACTS_DIR / "model.joblib")
+    print(f"\nSerialized model bundle to {ARTIFACTS_DIR / 'model.joblib'}")
     print("=" * 80)
-    print("STEP 2 & 3 COMPLETED SUCCESSFULLY.")
+    print("MULTI-MODEL BENCHMARK COMPLETED SUCCESSFULLY!")
     print("=" * 80)
 
-    return model_bundle, full_metrics
+    return bundle, full_metrics
 
 
 if __name__ == "__main__":
-    train_and_evaluate_all()
-
+    train_and_benchmark_all()

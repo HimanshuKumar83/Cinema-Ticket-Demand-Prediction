@@ -1,4 +1,4 @@
-# PowerShell script to launch Cinema Ticket Demand Forecasting locally
+﻿# PowerShell script to launch Cinema Ticket Demand Forecasting locally
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "   🎬 CinemaOps AI: Demand Forecasting Launch Script     " -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
@@ -14,7 +14,7 @@ if (Test-Path .venv\Scripts\Activate.ps1) {
 }
 
 # 2. Check artifacts
-if (-not (Test-Path artifacts\model.joblib) -or -not (Test-Path artifacts\history.parquet)) {
+if (-not (Test-Path artifacts\model.joblib) -or -not (Test-Path artifacts\priors.json)) {
     Write-Host "[!] Trained model artifacts missing. Running training pipeline..." -ForegroundColor Yellow
     python -m src.train
 }
